@@ -84,12 +84,6 @@
   ],
   "obsidian-completr:completr-bypass-tab-key": [],
   "easy-typing-obsidian:easy-typing-format-switch": [],
-  "obsidian-completr:completr-insert-selected-suggestion": [
-    {
-      "key": "Tab",
-      "modifiers": []
-    }
-  ],
   "obsidian-completr:completr-select-next-suggestion": [
     {
       "modifiers": [
@@ -302,14 +296,6 @@
         "Mod"
       ],
       "key": "A"
-    }
-  ],
-  "obsidian-linter:lint-file": [
-    {
-      "modifiers": [
-        "Mod"
-      ],
-      "key": "S"
     }
   ]
 }

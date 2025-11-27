@@ -27,6 +27,13 @@
   "columnViewMinWidth": 300,
   "continuousViewShowMetadata": false,
   "continuousViewShowBacklinks": false,
+  "missionControlViewZoomFactor": 0.5,
+  "disablePointerInMissionControlView": true,
   "backgroundMode": false,
+  "scrollableTabs": true,
+  "scrollableTabsMinWidth": 100,
+  "autoHideHorizontalTabs": false,
+  "disableOnThisDevice": false,
+  "enableUpdateCheck": true,
   "installationID": "b-VhugrWOVElt7q0vFFm9"
 }
