@@ -12,9 +12,11 @@
   "newFileFolderPath": "/",
   "showInlineTitle": true,
   "spellcheck": false,
-  "showLineNumber": true,
+  "showLineNumber": false,
   "trashOption": "local",
   "newLinkFormat": "shortest",
   "attachmentFolderPath": "zob_source/images",
-  "vimMode": false
+  "vimMode": false,
+  "defaultViewMode": "source",
+  "rightToLeft": false
 }
