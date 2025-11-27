@@ -1,6 +1,6 @@
 {
   "accentColor": "",
-  "cssTheme": "Tokyo Night",
+  "cssTheme": "AnuPpuccin",
   "showViewHeader": true,
   "nativeMenus": true,
   "theme": "obsidian",
@@ -22,5 +22,7 @@
     "mermaid"
   ],
   "showRibbon": false,
-  "textFontFamily": "JetBrainsMono Nerd Font"
+  "textFontFamily": "Maple Mono NF CN",
+  "interfaceFontFamily": "Maple Mono NF CN",
+  "monospaceFontFamily": "Maple Mono NF CN"
 }
