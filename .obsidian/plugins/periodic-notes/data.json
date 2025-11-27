@@ -1,0 +1,35 @@
+{
+  "showGettingStartedBanner": false,
+  "hasMigratedDailyNoteSettings": true,
+  "hasMigratedWeeklyNoteSettings": true,
+  "daily": {
+    "format": "YYYY-WW-MM-DD-E",
+    "folder": "dairy/daily",
+    "template": "zob_config/template/daily.md",
+    "enabled": true
+  },
+  "weekly": {
+    "format": "gggg-[W]ww-MM",
+    "folder": "dairy/weekly",
+    "template": "zob_config/template/weekly.md",
+    "enabled": true
+  },
+  "monthly": {
+    "format": "YYYY-MM",
+    "template": "",
+    "folder": "日记",
+    "enabled": false
+  },
+  "quarterly": {
+    "format": "YYYY-[季度]Q",
+    "template": "",
+    "folder": "日记",
+    "enabled": false
+  },
+  "yearly": {
+    "format": "YYYY",
+    "template": "",
+    "folder": "日记",
+    "enabled": false
+  }
+}

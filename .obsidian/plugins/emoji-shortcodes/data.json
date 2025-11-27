@@ -1,0 +1,19 @@
+{
+  "immediateReplace": true,
+  "suggester": true,
+  "historyPriority": true,
+  "historyLimit": 100,
+  "history": [
+    ":hot_face:",
+    ":cry:",
+    ":iphone:",
+    ":white_check_mark:",
+    ":pig2:",
+    ":pray:",
+    ":pencil:",
+    ":wrench:",
+    ":zap:",
+    ":page_with_curl:",
+    ":smiley:"
+  ]
+}

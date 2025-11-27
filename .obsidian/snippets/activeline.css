@@ -1,0 +1,31 @@
+.active-line-on .cm-line.cm-active {
+    box-shadow: 0vw 0 var(--active-line-bg),0vw 0 var(--active-line-bg) !important;
+}
+
+
+/* Active line background */
+.markdown-source-view.mod-cm6 .cm-line.cm-active{
+    background-color: rgba(var(--mono-rgb-100), 0.05)
+}
+
+/* Active line number */
+ 
+.markdown-source-view.mod-cm6  .cm-lineNumbers .cm-gutterElement.cm-active {
+  font-weight: 600;
+  color: grey;
+}
+
+
+.theme-light{
+    .markdown-source-view.mod-cm6 .cm-line.cm-active{
+    border-radius: 5px; /* 阴影矩形的圆角 */
+    box-shadow: 0px 0px 18px #b7b2b2; /* 阴影 */
+    }
+  }
+
+  .theme-dark{
+    .markdown-source-view.mod-cm6 .cm-line.cm-active{
+    box-shadow: 0px 0px 18px #555454; /* 阴影矩形的圆角 */
+    background-color: #202020; /* 阴影 */
+    }
+  }

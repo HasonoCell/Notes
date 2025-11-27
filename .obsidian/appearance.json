@@ -1,0 +1,26 @@
+{
+  "accentColor": "#abcdef",
+  "cssTheme": "Blue Topaz",
+  "showViewHeader": true,
+  "nativeMenus": true,
+  "theme": "obsidian",
+  "enabledCssSnippets": [
+    "custom",
+    "tags",
+    "supercharged-links-gen",
+    "list",
+    "link-colors",
+    "highlight",
+    "extended-colorscheme",
+    "better-word-count",
+    "backlinks",
+    "ribbon",
+    "status-bar",
+    "externel-link-icon",
+    "scrollbar",
+    "right-sidebar",
+    "mermaid"
+  ],
+  "showRibbon": false,
+  "textFontFamily": "JetBrainsMono Nerd Font"
+}
