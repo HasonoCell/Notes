@@ -1,7 +1,8 @@
 {
   "items": [
     {
-      "name": "Markdown"
+      "name": "Markdown",
+      "openExportedFileLocation": false
     },
     {
       "name": "Markdown (Hugo)"
@@ -52,6 +53,9 @@
       "name": "PowerPoint (.pptx)"
     }
   ],
+  "pandocPath": {
+    "win32": "\"D:\\Pandoc\\pandoc.exe\""
+  },
   "defaultExportDirectoryMode": "Auto",
   "openExportedFile": true,
   "env": {},
