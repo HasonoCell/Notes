@@ -1,0 +1,150 @@
+### 头部压缩
+当发出多个相同的请求的时候，如果这些请求的请求头是一样的或者相似的，那么 HTTP/2 **会自动消除重复的部分**，这就是所谓的`HPACK`算法：在客户端和服务器同时维护一张头信息表，所有字段都会存入这个表，生成一个索引号，以后就不发送同样字段了，只发送索引号，这样就**提高速度**了。
+
+### 二进制格式数据
+HTTP/2 不在采用 HTTP/1.1 里的纯文本格式的报文，而是全面采用了**二进制格式：**头信息和数据体都是二进制，并且统称为帧（Frame）：头信息帧（Headers Frame）和数据帧（Data Frame）。计算机可以直接解析二进制报文，不再像 HTTP/1.1 需要将纯文本转为二进制，**增加了数据传输的效率。**![](https://cdn.nlark.com/yuque/0/2025/webp/53866714/1757588076436-f319e67d-2564-41b9-85a3-30e36d85e10f.webp)
+
+### 服务器推送
+在 HTTP/2 中，服务器不再像 HTTP/1.1 那样只能被动地响应，而是可以**主动向客户端发送消息**。
+
+<font style="color:#DF2A3F;">那么，HTTP/2 中的服务器推送和 WebSocket，SSE 这样的推送机制之间有什么区别呢？</font>
+
+简单来说：
+
++ **HTTP/2 Server Push（服务器推送）**：是为了**优化页面加载速度**。服务器“猜测”客户端马上需要哪些资源（如CSS、JS、图片），并在客户端请求之前就主动推送给它。**它不能向客户端应用推送任意的业务数据**。
++ **WebSocket**：是提供一个**全双工、持续的、双向的**通信通道。一旦连接建立，客户端和服务器可以在任何时候任意地互相发送数据。它用于需要实时交互的场景。
++ **SSE（Server-Sent Events）**：是提供一个**单向的**通信通道，仅允许服务器向客户端推送数据。它建立在普通HTTP之上，非常适合实现实时消息流、通知等。
+
+---
+
+#### HTTP/2 Server Push （服务器推送）
+**目的**： **性能优化**，减少延迟。解决“队头阻塞”问题，避免客户端解析HTML后发现所需资源再一个个去请求所耗费的往返时间（RTT）。
+
+**工作机制**：
+
+1. 客户端请求一个HTML文件。
+2. 服务器在发送HTML响应时，**同时**主动推送这个HTML页面所依赖的关键资源（比如`style.css`和`index.js`）。
+3. 这些被推送的资源会被缓存到客户端的浏览器缓存中。
+4. 当浏览器解析HTML并发现需要`style.css`时，它发现这个资源已经在缓存里了，无需再发起网络请求。
+
+**通信方向**： **单向**（服务器 -> 客户端）
+
+**本质**： 它是对HTTP协议本身的优化，**没有提供新的API**给JavaScript开发者。开发者不能直接用JavaScript API来接收HTTP/2 Push的数据并做业务处理。浏览器在背后自动处理这些推送资源的接收和缓存。
+
+---
+
+#### WebSocket
+**目的**： **实时双向通信**。提供一种在单个、长期的连接上进行全双工通信的机制。
+
+**工作机制**：
+
+1. 客户端首先发起一个特殊的HTTP请求（Upgrade请求），请求切换到WebSocket协议。
+2. 如果服务器支持，双方握手成功，连接就从HTTP协议**升级**为WebSocket协议。
+3. 此后，连接保持打开状态，**客户端和服务器可以随时、任意地向对方发送数据**（数据是以“帧”的形式发送），无需等待请求响应。
+
+**通信方向**： **双向**（客户端 <-> 服务器）
+
+**典型应用**：
+
++ 在线聊天应用
++ 实时游戏
++ 协同编辑工具（如Google Docs）
+
+---
+
+#### SSE (Server-Sent Events)
+**目的**： **服务器向客户端发送实时数据流**。
+
+**工作机制**：
+
+1. 客户端使用 JavaScript 的`EventSource` API创建一个到服务器的连接。
+2. 连接保持打开状态，服务器可以使用一个简单的**文本格式**（遵循SSE规范）随时向客户端推送数据。
+3. 客户端通过监听事件来处理服务器发来的数据。
+
+**通信方向**： **单向**（服务器 -> 客户端）
+
+**特点**：
+
++ 基于普通HTTP协议，不需要特殊的协议升级。
++ 内置支持断线重连和事件ID。
++ 只能发送文本数据，通常是UTF-8编码。
+
+**典型应用**：
+
++ 实时新闻推送
++ 社交媒体动态更新
++ 服务器执行一个长时间任务的过程日志推送
+
+---
+
+#### 总结
+| 特性 | HTTP/2 Server Push | WebSocket | SSE (Server-Sent Events) |
+| :--- | :--- | :--- | :--- |
+| **主要目的** | **优化页面加载性能** | **实时双向交互** | **服务器到客户端的实时数据流** |
+| **通信方向** | 单向 (服务器 -> 客户端) | **双向** (客户端 <-> 服务器) | 单向 (服务器 -> 客户端) |
+| **开发者API** | 无（浏览器自动处理） | **有 (**`WebSocket`** 对象)** | **有 (**`EventSource`** 对象)** |
+| **协议** | HTTP/2 | **独立的 WebSocket 协议** (基于TCP，通过HTTP升级) | **普通 HTTP/1.1 或 HTTP/2** |
+| **数据格式** | 任何资源（CSS, JS, 图片等） | **二进制或文本帧** | **纯文本（UTF-8）** |
+| **连接管理** | 短连接，针对单个页面响应 | **持久化的长连接** | **持久化的长连接** |
+| **典型用例** | 推送关键静态资源 | 聊天、游戏、实时协作 | 新闻推送、股价更新、通知 |
+
+
+#### 如何选择？
++ 如果你想**加快网站加载速度**，减少资源请求的延迟：使用 **HTTP/2 Server Push**（通常由服务器配置自动完成，如Nginx或CDN）。
++ 如果你需要构建一个**高度交互的应用**，客户端和服务器需要频繁地互相发送消息（如聊天室、实时游戏）：使用 **WebSocket**。
++ 如果你只需要**服务器向客户端推送更新**，而客户端不需要向服务器发送太多数据（如实时仪表盘、新闻推送）：使用 **SSE**。它比WebSocket更简单，并且具有自动重连等内置功能。
+
+值得注意的是，**HTTP/2 Server Push 和 WebSocket/SSE 不是相互替代的关系，而是互补的**。你完全可以在一个页面上同时使用它们：用HTTP/2 Push高效加载页面资源和初始数据，然后用WebSocket或SSE来建立实时数据通道。
+
+### 并发传输
+HTTP/2 提出了`Stream`的概念：**<font style="color:rgb(15, 17, 21);">让多个请求可以“并行”地在同一个连接上交换数据。</font>**
+
+<font style="color:#DF2A3F;">那么，HTTP/2 的 Stream 和 HTTP/1.1 的 Connection: Keep-Alive 到底有什么区别呢？</font>
+
+<font style="color:rgb(15, 17, 21);">简单来说，</font>**<font style="color:rgb(15, 17, 21);">Connection: Keep-Alive 只是让多个请求可以“排队”使用同一个TCP连接，而HTTP/2的Stream则让多个请求可以“并行”地在同一个连接上交换数据。</font>**
+
+---
+
+#### <font style="color:rgb(15, 17, 21);">HTTP/1.1 Keep-Alive</font>
++ **目的**<font style="color:rgb(15, 17, 21);">： 解决</font>**创建TCP连接的高昂开销**<font style="color:rgb(15, 17, 21);">。在早期的HTTP/1.0中，每个请求-响应都需要建立一个全新的TCP连接（三次握手），完成后立即关闭（四次挥手），这非常低效。</font>
++ **工作机制**<font style="color:rgb(15, 17, 21);">：</font>
+    1. <font style="color:rgb(15, 17, 21);">客户端在请求头中带上 </font>`<font style="color:rgb(15, 17, 21);">Connection: Keep-Alive</font>`<font style="color:rgb(15, 17, 21);">。</font>
+    2. <font style="color:rgb(15, 17, 21);">服务器同意后，会在响应头中也带上 </font>`<font style="color:rgb(15, 17, 21);">Connection: Keep-Alive</font>`<font style="color:rgb(15, 17, 21);">。</font>
+    3. <font style="color:rgb(15, 17, 21);">此时，这个TCP连接不会在请求完成后关闭，而是保持打开状态，允许后续的请求继续使用它。</font>
++ **关键特性与问题**<font style="color:rgb(15, 17, 21);">：</font>
+    - **串行化（队头阻塞 - Head-of-Line Blocking）**<font style="color:rgb(15, 17, 21);">： 这是最核心的问题。虽然在同一个连接上可以发送多个请求，但这些请求必须是</font>**串行的**<font style="color:rgb(15, 17, 21);">。客户端必须等到上一个请求的响应完全接收完毕后，才能发出下一个请求。如果第一个请求的响应很慢，就会“阻塞”后面所有已经发送的请求。</font>
+    - **无状态性**<font style="color:rgb(15, 17, 21);">： 请求和响应都是完整的报文，没有标识符来区分哪个响应属于哪个请求，全靠顺序来维护。</font>
+    - **冗余头部**<font style="color:rgb(15, 17, 21);">： 每个请求都必须携带完整的HTTP头部（如Cookie、User-Agent等），即使它们和之前的请求一模一样，造成大量冗余和带宽浪费。</font>
+
+---
+
+#### <font style="color:rgb(15, 17, 21);">HTTP/2 Stream</font>
++ **目的**<font style="color:rgb(15, 17, 21);">： 在解决连接复用的基础上，进一步解决</font>**HTTP/1.1的队头阻塞和头部冗余**<font style="color:rgb(15, 17, 21);">问题，极大提升连接效率。</font>
++ **工作机制**<font style="color:rgb(15, 17, 21);">：</font>
+    1. <font style="color:rgb(15, 17, 21);">HTTP/2在一个TCP连接上引入了 </font>**“流（Stream）”**<font style="color:rgb(15, 17, 21);">、</font>**“帧（Frame）”**<font style="color:rgb(15, 17, 21);"> 和 </font>**“多路复用（Multiplexing）”**<font style="color:rgb(15, 17, 21);"> 的概念。</font>
+    2. **流（Stream）**<font style="color:rgb(15, 17, 21);">： 一个独立的、双向的虚拟通道，用于承载一个请求-响应对话。每个流都有一个唯一的ID。</font>
+    3. **帧（Frame）**<font style="color:rgb(15, 17, 21);">： 所有通信都被分割成更小的</font>**帧**<font style="color:rgb(15, 17, 21);">（如HEADERS帧、DATA帧）。每个帧都带有其所属流的ID。</font>
++ **关键特性与优势**<font style="color:rgb(15, 17, 21);">：</font>
+    - **多路复用（Multiplexing）**<font style="color:rgb(15, 17, 21);">：多个请求和响应可以</font>**并行地、交错地**<font style="color:rgb(15, 17, 21);">在同一个TCP连接上发送和接收。客户端可以同时发送多个请求的帧，服务器也可以同时返回多个响应的帧。帧通过流ID来区分归属。</font>
+    - **解决了队头阻塞**<font style="color:rgb(15, 17, 21);">： 因为帧是并行和交错的，一个慢请求（流）的帧不会阻塞其他流上快速请求的帧的传输。（注意：这指的是HTTP层面的队头阻塞，TCP层面的队头阻塞依然存在，但影响较小）。</font>
+    - **头部压缩（HPACK）**<font style="color:rgb(15, 17, 21);">： HTTP/2使用专门的HPACK算法对头部进行压缩，极大减少了冗余数据的传输。</font>
+    - **请求优先级**<font style="color:rgb(15, 17, 21);">： 客户端可以为每个流设置优先级，提示服务器哪些资源更重要，以便优先传输。</font>
+    - **服务器推送**<font style="color:rgb(15, 17, 21);">： 服务器可以主动向客户端推送资源，而无需客户端明确请求。</font>
+
+---
+
+#### <font style="color:rgb(15, 17, 21);">总结</font>
+| <font style="color:rgb(15, 17, 21);">特性</font> | <font style="color:rgb(15, 17, 21);">HTTP/1.1 + Keep-Alive</font> | <font style="color:rgb(15, 17, 21);">HTTP/2 + Streams</font> |
+| :--- | :--- | :--- |
+| **核心单位** | **完整的HTTP报文** | **帧（Frame）**<font style="color:rgb(15, 17, 21);"> 和 </font>**流（Stream）** |
+| **复用方式** | **串行复用**<font style="color:rgb(15, 17, 21);">（一个接一个）</font> | **并行多路复用**<font style="color:rgb(15, 17, 21);">（交错并发）</font> |
+| **队头阻塞** | **存在**<font style="color:rgb(15, 17, 21);">（HTTP层面）</font> | **解决**<font style="color:rgb(15, 17, 21);">（HTTP层面）</font> |
+| **头部传输** | <font style="color:rgb(15, 17, 21);">冗余、未压缩</font> | **HPACK压缩**<font style="color:rgb(15, 17, 21);">，高效</font> |
+| **优先级** | <font style="color:rgb(15, 17, 21);">难以实现</font> | **原生支持请求优先级** |
+| **服务器推送** | <font style="color:rgb(15, 17, 21);">无法实现</font> | **原生支持** |
+| **连接数** | <font style="color:rgb(15, 17, 21);">浏览器通常为每个域名开启</font>**6-8个**<font style="color:rgb(15, 17, 21);">并行连接以绕过队头阻塞</font> | **通常只需1个TCP连接** |
+
+
++ **Keep-Alive**<font style="color:rgb(15, 17, 21);"> 是 </font>**“量的优化”**<font style="color:rgb(15, 17, 21);">：它减少了创建和销毁TCP连接的次数，节省了时间和资源，但没有改变HTTP请求-响应本身的工作模式。</font>
++ **Stream**<font style="color:rgb(15, 17, 21);"> 是 </font>**“质的飞跃”**<font style="color:rgb(15, 17, 21);">：它彻底重构了数据在连接上的传输方式，通过二进制分帧、多路复用和头部压缩等技术，从根本上解决了HTTP/1.1的性能瓶颈，使得单个TCP连接的效率达到了极致。</font>
+
