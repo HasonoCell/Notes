@@ -60,5 +60,6 @@
   "showExportProgressBar": true,
   "pandocPath": {
     "win32": "D:\\Pandoc\\pandoc.exe"
-  }
+  },
+  "openExportedFileLocation": true
 }
