@@ -11,7 +11,6 @@
 · 端口（Port）: https 默认是 443（如果省略则使用默认端口）  
 · 路径（Path）: /index.html  
 · 查询参数（Query String）: ?key=value（如果有的话）  
-· 片段（Fragment）: #section（用于页面内锚点）
 3. 检查合法性 & HSTS：  
 · 浏览器会检查输入的URL是否合法。  
 · 它还会检查HSTS（HTTP Strict Transport Security） 预加载列表。如果网站在这个列表中，浏览器会强制使用HTTPS进行连接，即使用户输入的是 http://。
@@ -126,6 +125,3 @@ graph TD
     M --> N[显示页面]
     G --> O[TCP连接关闭: 四次挥手]
 ```
-
-这个过程在现代高速浏览器中几乎是瞬间完成的，但其背后是无数工程师精心设计和优化的复杂工程。
-
