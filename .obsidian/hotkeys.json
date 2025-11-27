@@ -297,5 +297,22 @@
       ],
       "key": "A"
     }
+  ],
+  "obsidian-completr:completr-fake-arrow-up": [
+    {
+      "modifiers": [
+        "Mod"
+      ],
+      "key": "ArrowUp"
+    }
+  ],
+  "obsidian-completr:completr-insert-selected-suggestion": [],
+  "obsidian-completr:completr-fake-arrow-down": [
+    {
+      "modifiers": [
+        "Mod"
+      ],
+      "key": "ArrowDown"
+    }
   ]
 }
