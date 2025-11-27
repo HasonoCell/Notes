@@ -14,9 +14,10 @@
   "spellcheck": false,
   "showLineNumber": false,
   "trashOption": "local",
-  "newLinkFormat": "shortest",
+  "newLinkFormat": "relative",
   "attachmentFolderPath": "zob_source/images",
   "vimMode": false,
   "defaultViewMode": "source",
-  "rightToLeft": false
+  "rightToLeft": false,
+  "useMarkdownLinks": true
 }
