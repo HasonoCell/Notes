@@ -47,10 +47,13 @@
     },
     {
       "name": "Bibliography"
+    },
+    {
+      "name": "PowerPoint (.pptx)"
     }
   ],
   "pandocPath": {
-    "win32": "F:\\Program Files\\Pandoc\\pandoc.exe"
+    "win32": "D:\\Pandoc\\pandoc.exe"
   },
   "defaultExportDirectoryMode": "Auto",
   "openExportedFile": true,
