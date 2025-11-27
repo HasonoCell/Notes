@@ -1,7 +1,13 @@
 ---
-title: Hello World！
+title: 你好世界！
+tags:
 ---
 # Hello World！
 
 今天开始打算从将笔记从语雀转到 Obsidian，笔记这东西存在云端还是太不放心了。
 所以，Hello World！
+
+## 除此之外还有挺多想说的
+**首先，我们应该要善良**
+其次要诚实
+再其次是，
