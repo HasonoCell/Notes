@@ -52,15 +52,10 @@
       "name": "PowerPoint (.pptx)"
     }
   ],
-  "pandocPath": {
-    "win32": "D:\\Pandoc\\pandoc.exe"
-  },
+  "pandocPath": {},
   "defaultExportDirectoryMode": "Auto",
   "openExportedFile": true,
   "env": {},
   "showExportProgressBar": true,
-  "lastExportDirectory": {
-    "win32": "C:\\Users\\fanghaotian\\Documents"
-  },
-  "lastExportType": "Markdown (Hugo)"
+  "lastEditName": "Markdown"
 }
