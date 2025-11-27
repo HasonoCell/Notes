@@ -52,10 +52,8 @@
       "name": "PowerPoint (.pptx)"
     }
   ],
-  "pandocPath": {},
   "defaultExportDirectoryMode": "Auto",
   "openExportedFile": true,
   "env": {},
-  "showExportProgressBar": true,
-  "lastEditName": "Markdown"
+  "showExportProgressBar": true
 }
