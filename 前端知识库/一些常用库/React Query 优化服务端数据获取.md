@@ -86,9 +86,8 @@ const sendMessageMutation = useMutation({
 });
 ```
 
----
 
-#### <font style="color:#000000;">3. SSE流式消息本地状态管理（不进Query）</font>
+#### 3. SSE流式消息本地状态管理（不进Query）
 ```tsx
 const [streamingContent, setStreamingContent] = useState('');
 
@@ -112,9 +111,8 @@ const createSSE = () => {
 };
 ```
 
----
 
-#### <font style="color:#000000;">4. SSE结束后用完整AI消息替换占位消息（Query缓存更新）</font>
+#### 4. SSE结束后用完整AI消息替换占位消息（Query缓存更新）
 ```tsx
 const replaceAIMessage = (content: string) => {
   queryClient.setQueryData(['messages', sessionId], (old: Message[] = []) =>
@@ -127,9 +125,8 @@ const replaceAIMessage = (content: string) => {
 };
 ```
 
----
 
-#### <font style="color:#000000;">5. 渲染时合并历史消息和流式消息</font>
+#### 5. 渲染时合并历史消息和流式消息
 ```tsx
 const displayMessages = [
   ...messages.filter((msg) => !msg.isPlaceholder),
@@ -139,26 +136,23 @@ const displayMessages = [
 ];
 ```
 
----
 
 **总结：**
 
-+ <font style="color:#000000;">历史消息用 React Query 管理</font>
-+ <font style="color:#000000;">用户消息和AI占位消息用乐观更新</font>
-+ <font style="color:#000000;">流式内容只用本地 state</font>
-+ <font style="color:#000000;">SSE 结束后用 setQueryData 替换占位消息</font>
++ 历史消息用 React Query 管理
++ 用户消息和AI占位消息用乐观更新
++ 流式内容只用本地 state
++ SSE 结束后用 setQueryData 替换占位消息
 
-<font style="color:#000000;"></font>
-
-### <font style="color:#000000;">React Query 的常规适用场景</font>
+### React Query 的常规适用场景
 React Query 是管理和缓存**服务器状态**的强大工具，但它主要针对的是遵循**请求-响应**模式的异步操作。
 
 1. **适用 React Query 的场景 (请求-响应模式):**
-    - `**useQuery**`: 用于获取数据（GET 请求）。比如，获取用户个人信息、获取对话列表、获取某个对话的历史消息。React Query 会自动处理缓存、后台更新、数据是否过时等问题。
-    - `**useMutation**`: 用于创建、更新或删除数据（POST, PUT, DELETE 请求）。比如，用户登录、注册、发送新消息、创建新对话。React Query 会帮助你管理加载状态、错误状态，并能在操作成功后智能地更新或废弃相关的 `useQuery` 缓存。
+    - `useQuery`: 用于获取数据（GET 请求）。比如，获取用户个人信息、获取对话列表、获取某个对话的历史消息。React Query 会自动处理缓存、后台更新、数据是否过时等问题。
+    - `useMutation`: 用于创建、更新或删除数据（POST, PUT, DELETE 请求）。比如，用户登录、注册、发送新消息、创建新对话。React Query 会帮助你管理加载状态、错误状态，并能在操作成功后智能地更新或废弃相关的 `useQuery` 缓存。
 2. **不直接适用 React Query 的场景 (持续连接/推送模式):**
     - **Server-Sent Events (SSE) 和 WebSockets**: 这两种技术都涉及一个从服务器到客户端的持久连接，服务器可以随时主动推送数据。这不符合 React Query "一次请求，一次响应" 的核心模型。
-    - 对于这种情况，采用传统方式（比如 SSE）——创建一个 `EventSource` 实例，并监听 `onmessage`, `onerror` 等事件——是完全正确的做法。**所以说，针对传统的 GET（比如切换对话时获取某一对话下的所有消息）操作，我可以仍然采取 **`**useQuery**`**；但是对于 SSE 这种持续推送的场景（比如说实时展示 AI 消息在屏幕上，实现打字机效果），我仍然可以直接调用底层的 EventSource 直接创建连接，而不用再去走一遍 React Query。**
+    - 对于这种情况，采用传统方式（比如 SSE）——创建一个 `EventSource` 实例，并监听 `onmessage`, `onerror` 等事件——是完全正确的做法。所以说，针对传统的 GET（比如切换对话时获取某一对话下的所有消息）操作，我可以仍然采取 `useQuery`；但是对于 SSE 这种持续推送的场景（比如说实时展示 AI 消息在屏幕上，实现打字机效果），我仍然可以直接调用底层的 EventSource 直接创建连接，而不用再去走一遍 React Query。
 
 **总结与建议:**
 

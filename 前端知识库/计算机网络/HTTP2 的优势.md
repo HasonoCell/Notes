@@ -97,18 +97,18 @@ HTTP/2 不在采用 HTTP/1.1 里的纯文本格式的报文，而是全面采用
 值得注意的是，**HTTP/2 Server Push 和 WebSocket/SSE 不是相互替代的关系，而是互补的**。你完全可以在一个页面上同时使用它们：用HTTP/2 Push高效加载页面资源和初始数据，然后用WebSocket或SSE来建立实时数据通道。
 
 ### 并发传输
-HTTP/2 提出了`Stream`的概念：**<font style="color:rgb(15, 17, 21);">让多个请求可以“并行”地在同一个连接上交换数据。</font>**
+HTTP/2 提出了`Stream`的概念：让多个请求可以“并行”地在同一个连接上交换数据。
 
 <font style="color:#DF2A3F;">那么，HTTP/2 的 Stream 和 HTTP/1.1 的 Connection: Keep-Alive 到底有什么区别呢？</font>
 
-<font style="color:rgb(15, 17, 21);">简单来说，</font>**<font style="color:rgb(15, 17, 21);">Connection: Keep-Alive 只是让多个请求可以“排队”使用同一个TCP连接，而HTTP/2的Stream则让多个请求可以“并行”地在同一个连接上交换数据。</font>**
+简单来说，Connection: Keep-Alive 只是让多个请求可以“排队”使用同一个TCP连接，而HTTP/2的Stream则让多个请求可以“并行”地在同一个连接上交换数据。
 
 ---
 
-#### <font style="color:rgb(15, 17, 21);">HTTP/1.1 Keep-Alive</font>
-+ **目的**<font style="color:rgb(15, 17, 21);">： 解决</font>**创建TCP连接的高昂开销**<font style="color:rgb(15, 17, 21);">。在早期的HTTP/1.0中，每个请求-响应都需要建立一个全新的TCP连接（三次握手），完成后立即关闭（四次挥手），这非常低效。</font>
-+ **工作机制**<font style="color:rgb(15, 17, 21);">：</font>
-    1. <font style="color:rgb(15, 17, 21);">客户端在请求头中带上 </font>`<font style="color:rgb(15, 17, 21);">Connection: Keep-Alive</font>`<font style="color:rgb(15, 17, 21);">。</font>
+#### HTTP/1.1 Keep-Alive
++ **目的**： 解决创建TCP连接的高昂开销。在早期的HTTP/1.0中，每个请求-响应都需要建立一个全新的TCP连接（三次握手），完成后立即关闭（四次挥手），这非常低效。
++ **工作机制**
+    1. 客户端在请求头中带上 `Connection: Keep-Alive</font>`<font style="color:rgb(15, 17, 21);">。</font>
     2. <font style="color:rgb(15, 17, 21);">服务器同意后，会在响应头中也带上 </font>`<font style="color:rgb(15, 17, 21);">Connection: Keep-Alive</font>`<font style="color:rgb(15, 17, 21);">。</font>
     3. <font style="color:rgb(15, 17, 21);">此时，这个TCP连接不会在请求完成后关闭，而是保持打开状态，允许后续的请求继续使用它。</font>
 + **关键特性与问题**<font style="color:rgb(15, 17, 21);">：</font>
