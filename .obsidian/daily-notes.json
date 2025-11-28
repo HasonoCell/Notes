@@ -1,4 +1,5 @@
 {
-  "folder": "dairy/daily",
-  "format": "YYYY-WW-MM-DD-E"
+  "folder": "Daily",
+  "format": "YYYY-MM-DD",
+  "autorun": true
 }

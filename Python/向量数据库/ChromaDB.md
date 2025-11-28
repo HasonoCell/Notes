@@ -71,4 +71,3 @@ collection = client.get_or_create_collection(
     embedding_function=embedding_function,  # type: ignore
 )
 ```
-
