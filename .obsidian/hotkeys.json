@@ -314,5 +314,6 @@
       ],
       "key": "ArrowDown"
     }
-  ]
+  ],
+  "markdown:toggle-preview": []
 }
