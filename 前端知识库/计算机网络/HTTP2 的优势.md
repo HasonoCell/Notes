@@ -99,7 +99,7 @@ HTTP/2 不在采用 HTTP/1.1 里的纯文本格式的报文，而是全面采用
 ### 并发传输
 HTTP/2 提出了`Stream`的概念：让多个请求可以“并行”地在同一个连接上交换数据。
 
-<font style="color:#DF2A3F;">那么，HTTP/2 的 Stream 和 HTTP/1.1 的 Connection: Keep-Alive 到底有什么区别呢？</font>
+那么，HTTP/2 的 Stream 和 HTTP/1.1 的 Connection: Keep-Alive 到底有什么区别呢？
 
 简单来说，Connection: Keep-Alive 只是让多个请求可以“排队”使用同一个TCP连接，而HTTP/2的Stream则让多个请求可以“并行”地在同一个连接上交换数据。
 
@@ -112,39 +112,23 @@ HTTP/2 提出了`Stream`的概念：让多个请求可以“并行”地在同�
     2. 服务器同意后，会在响应头中也带上 `Connection: Keep-Alive`。
     3. 此时，这个TCP连接不会在请求完成后关闭，而是保持打开状态，允许后续的请求继续使用它。
 + **关键特性与问题**：
-    - **串行化（队头阻塞 - Head-of-Line Blocking）**<font style="color:rgb(15, 17, 21);">： 这是最核心的问题。虽然在同一个连接上可以发送多个请求，但这些请求必须是</font>**串行的**<font style="color:rgb(15, 17, 21);">。客户端必须等到上一个请求的响应完全接收完毕后，才能发出下一个请求。如果第一个请求的响应很慢，就会“阻塞”后面所有已经发送的请求。</font>
-    - **无状态性**<font style="color:rgb(15, 17, 21);">： 请求和响应都是完整的报文，没有标识符来区分哪个响应属于哪个请求，全靠顺序来维护。</font>
-    - **冗余头部**<font style="color:rgb(15, 17, 21);">： 每个请求都必须携带完整的HTTP头部（如Cookie、User-Agent等），即使它们和之前的请求一模一样，造成大量冗余和带宽浪费。</font>
+    - **串行化（队头阻塞 - Head-of-Line Blocking）**： 这是最核心的问题。虽然在同一个连接上可以发送多个请求，但这些请求必须是**串行的**。客户端必须等到上一个请求的响应完全接收完毕后，才能发出下一个请求。如果第一个请求的响应很慢，就会“阻塞”后面所有已经发送的请求。
+    - **无状态性**：请求和响应都是完整的报文，没有标识符来区分哪个响应属于哪个请求，全靠顺序来维护。
+    - **冗余头部**：每个请求都必须携带完整的HTTP头部（如Cookie、User-Agent等），即使它们和之前的请求一模一样，造成大量冗余和带宽浪费。
 
 ---
 
-#### <font style="color:rgb(15, 17, 21);">HTTP/2 Stream</font>
-+ **目的**<font style="color:rgb(15, 17, 21);">： 在解决连接复用的基础上，进一步解决</font>**HTTP/1.1的队头阻塞和头部冗余**<font style="color:rgb(15, 17, 21);">问题，极大提升连接效率。</font>
-+ **工作机制**<font style="color:rgb(15, 17, 21);">：</font>
-    1. <font style="color:rgb(15, 17, 21);">HTTP/2在一个TCP连接上引入了 </font>**“流（Stream）”**<font style="color:rgb(15, 17, 21);">、</font>**“帧（Frame）”**<font style="color:rgb(15, 17, 21);"> 和 </font>**“多路复用（Multiplexing）”**<font style="color:rgb(15, 17, 21);"> 的概念。</font>
-    2. **流（Stream）**<font style="color:rgb(15, 17, 21);">： 一个独立的、双向的虚拟通道，用于承载一个请求-响应对话。每个流都有一个唯一的ID。</font>
-    3. **帧（Frame）**<font style="color:rgb(15, 17, 21);">： 所有通信都被分割成更小的</font>**帧**<font style="color:rgb(15, 17, 21);">（如HEADERS帧、DATA帧）。每个帧都带有其所属流的ID。</font>
-+ **关键特性与优势**<font style="color:rgb(15, 17, 21);">：</font>
-    - **多路复用（Multiplexing）**<font style="color:rgb(15, 17, 21);">：多个请求和响应可以</font>**并行地、交错地**<font style="color:rgb(15, 17, 21);">在同一个TCP连接上发送和接收。客户端可以同时发送多个请求的帧，服务器也可以同时返回多个响应的帧。帧通过流ID来区分归属。</font>
-    - **解决了队头阻塞**<font style="color:rgb(15, 17, 21);">： 因为帧是并行和交错的，一个慢请求（流）的帧不会阻塞其他流上快速请求的帧的传输。（注意：这指的是HTTP层面的队头阻塞，TCP层面的队头阻塞依然存在，但影响较小）。</font>
-    - **头部压缩（HPACK）**<font style="color:rgb(15, 17, 21);">： HTTP/2使用专门的HPACK算法对头部进行压缩，极大减少了冗余数据的传输。</font>
-    - **请求优先级**<font style="color:rgb(15, 17, 21);">： 客户端可以为每个流设置优先级，提示服务器哪些资源更重要，以便优先传输。</font>
-    - **服务器推送**<font style="color:rgb(15, 17, 21);">： 服务器可以主动向客户端推送资源，而无需客户端明确请求。</font>
-
----
-
-#### <font style="color:rgb(15, 17, 21);">总结</font>
-| <font style="color:rgb(15, 17, 21);">特性</font> | <font style="color:rgb(15, 17, 21);">HTTP/1.1 + Keep-Alive</font> | <font style="color:rgb(15, 17, 21);">HTTP/2 + Streams</font> |
-| :--- | :--- | :--- |
-| **核心单位** | **完整的HTTP报文** | **帧（Frame）**<font style="color:rgb(15, 17, 21);"> 和 </font>**流（Stream）** |
-| **复用方式** | **串行复用**<font style="color:rgb(15, 17, 21);">（一个接一个）</font> | **并行多路复用**<font style="color:rgb(15, 17, 21);">（交错并发）</font> |
-| **队头阻塞** | **存在**<font style="color:rgb(15, 17, 21);">（HTTP层面）</font> | **解决**<font style="color:rgb(15, 17, 21);">（HTTP层面）</font> |
-| **头部传输** | <font style="color:rgb(15, 17, 21);">冗余、未压缩</font> | **HPACK压缩**<font style="color:rgb(15, 17, 21);">，高效</font> |
-| **优先级** | <font style="color:rgb(15, 17, 21);">难以实现</font> | **原生支持请求优先级** |
-| **服务器推送** | <font style="color:rgb(15, 17, 21);">无法实现</font> | **原生支持** |
-| **连接数** | <font style="color:rgb(15, 17, 21);">浏览器通常为每个域名开启</font>**6-8个**<font style="color:rgb(15, 17, 21);">并行连接以绕过队头阻塞</font> | **通常只需1个TCP连接** |
-
-
-+ **Keep-Alive**<font style="color:rgb(15, 17, 21);"> 是 </font>**“量的优化”**<font style="color:rgb(15, 17, 21);">：它减少了创建和销毁TCP连接的次数，节省了时间和资源，但没有改变HTTP请求-响应本身的工作模式。</font>
-+ **Stream**<font style="color:rgb(15, 17, 21);"> 是 </font>**“质的飞跃”**<font style="color:rgb(15, 17, 21);">：它彻底重构了数据在连接上的传输方式，通过二进制分帧、多路复用和头部压缩等技术，从根本上解决了HTTP/1.1的性能瓶颈，使得单个TCP连接的效率达到了极致。</font>
+#### HTTP/2 Stream
+- **目的**： 在解决连接复用的基础上，进一步解决**HTTP/1.1的队头阻塞和头部冗余**问题，极大提升连接效率。
+    
+- 工作机制：
+    1. HTTP/2在一个TCP连接上引入了 **“流（Stream）”**、**“帧（Frame）”** 和 **“多路复用（Multiplexing）”** 的概念。
+    2. **流（Stream）**： 一个独立的、双向的虚拟通道，用于承载一个请求-响应对话。每个流都有一个唯一的ID。
+    3. **帧（Frame）**： 所有通信都被分割成更小的**帧**（如HEADERS帧、DATA帧）。每个帧都带有其所属流的ID。
+- 关键特性与优势：
+    - **多路复用（Multiplexing）**：多个请求和响应可以**并行地、交错地**在同一个TCP连接上发送和接收。客户端可以同时发送多个请求的帧，服务器也可以同时返回多个响应的帧。帧通过流ID来区分归属。
+    - **解决了队头阻塞**： 因为帧是并行和交错的，一个慢请求（流）的帧不会阻塞其他流上快速请求的帧的传输。（注意：这指的是HTTP层面的队头阻塞，TCP层面的队头阻塞依然存在，但影响较小）。
+    - **头部压缩（HPACK）**： HTTP/2使用专门的HPACK算法对头部进行压缩，极大减少了冗余数据的传输。
+    - **请求优先级**： 客户端可以为每个流设置优先级，提示服务器哪些资源更重要，以便优先传输。
+    - **服务器推送**： 服务器可以主动向客户端推送资源，而无需客户端明确请求。
 
