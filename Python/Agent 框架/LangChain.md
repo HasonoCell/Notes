@@ -66,6 +66,7 @@ for tool_call in response.tool_calls:
 ---
 
 #### 使用 Pydantic 实现 Model 的结构化输出
+
 ```python
 from pydantic import BaseModel, Field
 
@@ -85,9 +86,9 @@ print(response)
 ---
 
 #### 创建 Model 的两种方式
-理清一下 LangChain 中创建一个 Model 的**<font style="color:#DF2A3F;">两种方式</font>**<font style="color:#000000;">，即</font>**显式实例化**<font style="color:#000000;">和</font>**工厂函数**<font style="color:#000000;">。</font>
+理清一下 LangChain 中创建一个 Model 的**两种方式**，即**显式实例化**和**工厂函数**。
 
-<font style="color:#000000;">方法一：显式实例化，比如 </font>`<font style="color:#000000;">ChatOpenAI</font>`<font style="color:#000000;">，</font>`<font style="color:#000000;">ChatAnthropic</font>`<font style="color:#000000;">等等，可以通过</font>[https://docs.langchain.com/oss/python/integrations/providers/overview](https://docs.langchain.com/oss/python/integrations/providers/overview) 查询可创建的模型列表
+方法一：显式实例化，比如 `ChatOpenAI`，`ChatAnthropic`等等，可以通过[https://docs.langchain.com/oss/python/integrations/providers/overview](https://docs.langchain.com/oss/python/integrations/providers/overview) 查询可创建的模型列表
 
 ```python
 from langchain_openai import ChatOpenAI
@@ -98,7 +99,7 @@ openai_model = ChatOpenAI(
 )
 ```
 
-**优点**<font style="color:#000000;">：可以清晰地表明了你正在使用哪个模型类。</font>
+**优点**：可以清晰地表明了你正在使用哪个模型类。
 
 
 
