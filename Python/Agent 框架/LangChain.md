@@ -361,3 +361,60 @@ print(result["messages"][-1].content)
 
 #### Long-term Memory
 [Long-term memory - Docs by LangChain](https://docs.langchain.com/oss/python/langchain/long-term-memory) 和 LangGraph 有关，待看。
+
+
+### Output
+针对一个 Model 或者 Agent 调用后产生的 Output，就会涉及到一个重要问题：是否针对此 Output 采取结构化输出？
+
+#### 判断是否结构化输出的依据
+不采取 Structured Output：
+1. 只需要自然语言响应时，比如聊天对话，内容创作（文章、故事、邮件），问题回答等。
+2. 格式要求简单且可通过 Prompt 实现，输出的内容通常由人类来解读。
+
+采取 Structured Output：
+1. 需要提取**特定数据结构**而非自然语言
+2. 需要直接程序化使用输出时，比如 API 参数生成，表单数据填充
+3. 需要严格格式验证或者复杂数据类型
+
+
+#### Structured Output 的方法
+[Structured output - Docs by LangChain](https://docs.langchain.com/oss/python/langchain/structured-output) 官方文档。
+核心围绕着一个关键词：Strategy，即“如何让 Model 生成结构化输出的**策略**”。LangChain 提供了两种核心的 Strategy，会自动根据模型能力选择最优策略，模型调用后统一通过 `structured_response` 访问结构化输出结果。
+
+1. Provider Strategy：适用于**模型提供者原生支持结构化输出**
+```python
+from pydantic import BaseModel, Field
+from langchain.agents import create_agent
+
+
+# 通过 Pydantic 定义结构化输出的 Schema
+class ContactInfo(BaseModel):
+    """Contact information for a person."""
+    name: str = Field(description="The name of the person")
+    email: str = Field(description="The email address of the person")
+    phone: str = Field(description="The phone number of the person")
+
+agent = create_agent(
+    model="gpt-5",
+    response_format=ContactInfo  # 自动选择为 Provider Strategy
+)
+
+result = agent.invoke({
+    "messages": [{"role": "user", "content": "Extract contact info from: John Doe, john@example.com, (555) 123-4567"}]
+})
+
+print(result["structured_response"])
+# ContactInfo(name='John Doe', email='john@example.com', phone='(555) 123-4567')
+```
+
+2. Tool Strategy：适用于**所有支持工具调用的模型（大多数现代模型）**
+```python
+# 显式使用ToolStrategy
+agent = create_agent(
+    model="claude-3",
+    response_format=ToolStrategy(
+        schema=MeetingAction,
+        tool_message_content="Action item captured!"  # 自定义工具消息
+    )
+)
+```
