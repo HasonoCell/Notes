@@ -257,3 +257,28 @@ def summarize_conversation(runtime: ToolRuntime) -> str:
 
 ### Memory
 #### Short-term Memory
+Short-term Memory 是一种**单个线程**化的持久机制（注意，这里的线程并不是指程序中的线程，而是指一次对话，即 Conversation），它的核心特点是：
+1. **线程级隔离**：每个对话线程（通过唯一的 `thread_id` 标识）拥有独立的记忆空间，不同线程间的记忆完全隔离
+
+```python
+from langchain.agents import create_agent
+from langgraph.checkpoint.memory import InMemorySaver  
+
+
+agent = create_agent(
+    "gpt-5",
+    [get_user_info],
+    checkpointer=InMemorySaver(),  
+)
+
+agent.invoke(
+    {"messages": [{"role": "user", "content": "Hi! My name is Bob."}]},
+    {"configurable": {"thread_id": "1"}},  
+)
+```
+
+2. **状态管理**：默认通过 `AgentState` 管理，最重要的作用是通过 `messages` 键存储对话历史，也支持自定义扩展字段（比如 `user_id`，`user_name` 等等）
+3. **持久化能力**：通过 `checkpointer` 参数实现线程级别的状态持久化，生产环境通常使用数据库支持的 checkpointer
+4. **上下文管理**：提供 trim messages、delete messages、summarize messages 等模式来处理超出 LLM 上下文窗口的长对话，具体代码细节可查阅 [Short-term memory - Docs by LangChain](https://docs.langchain.com/oss/python/langchain/short-term-memory#trim-messages)
+5. **多途径访问**：可以通过 tools、动态提示函数、pre/post model hooks 等多种方式访问和修改短期记忆状态
+

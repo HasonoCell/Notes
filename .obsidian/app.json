@@ -19,5 +19,6 @@
   "vimMode": false,
   "defaultViewMode": "source",
   "rightToLeft": false,
-  "useMarkdownLinks": true
+  "useMarkdownLinks": true,
+  "showIndentGuide": false
 }
