@@ -26,24 +26,16 @@
 
 <font style="color:#DF2A3F;">这个对话平台项目中，使用 React Query 重构时有遇到一些棘手的问题吗？</font>
 
-主要就是如何正确协调 React Query 和 Zustand 去管理 SSE 返回的流式数据：流式数据的处理不太符合常规数据的处理模型，对于常规数据，通常就是直接 useQuery 查询后将数据存到全局提供出来的 QueryClient 的缓存中，然后 UI 在缓存中得到数据并渲染，<u><font style="color:#000000;">流式数据不太符合这样的处理模型，该如何去协调呢？</font></u>
+主要就是如何正确协调 React Query 和 Zustand 去管理 SSE 返回的流式数据：流式数据的处理不太符合常规数据的处理模型，对于常规数据，通常就是直接 useQuery 查询后将数据存到全局提供出来的 QueryClient 的缓存中，然后 UI 在缓存中得到数据并渲染，**流式数据不太符合这样的处理模型，该如何去协调呢？**
 
-<font style="color:#DF2A3F;">  
-</font><font style="color:#DF2A3F;">方案：</font>
+方案：
+1. 当用户发送消息时，通过乐观更新，我们将用户的消息立即保存在 Query 缓存中（此时本地缓存与后端数据库中的 Messages 数组时同步的，都新增了用户这条消息），在保存用户消息的同时我们还在缓存中保存一条用来占位的 AI 消息，等待后续得到了完整 AI 回复消息后再来替换（根据每条消息的 id 来查找）
 
-1. <font style="color:#000000;">当用户发送消息时，通过</font><font style="color:#DF2A3F;">乐观更新</font><font style="color:#000000;">，我们将用户的消息立即保存在 Query 缓存中（此时本地缓存与后端数据库中的 Messages 数组时同步的，都新增了用户这条消息），在保存用户消息的同时我们还在缓存中保存一条用来占位的 AI 消息，等待后续得到了完整 AI 回复消息后再来替换（根据每条消息的 id 来查找）</font>
+2. 然后前端建立 SSE 连接，在 message 事件中将 chunk 实时累积在本地 State 中，不触碰 Query 缓存（其实这里是对“正在流式回复的 AI 消息”和“流式回复完成后完整的 AI 消息”两个概念作了区分，前者应该是一个本地的 State，而后者才是一个需要 Query 管理的服务端数据）。
 
-<font style="color:#000000;"></font>
+3. 然后关闭 SSE 连接，将完整的 AI 消息保存在 Query 缓存中，后端在流式输出后也将完整的 AI 消息存入数据库，这样第二次实现了后端数据与本地缓存的同步。
 
-2. <font style="color:#000000;">然后前端建立 SSE 连接，在 message 事件中将 chunk 实时累积在本地 State 中，不触碰 Query 缓存（其实这里是对“正在流式回复的 AI 消息”和“流式回复完成后完整的 AI 消息”两个概念作了区分，</font><font style="color:#DF2A3F;">前者应该是一个本地的 State，而后者才是一个需要 Query 管理的服务端数据</font><font style="color:#000000;">）。</font>
-
-<font style="color:#000000;"></font>
-
-3. <font style="color:#000000;">然后关闭 SSE 连接，将完整的 AI 消息保存在 Query 缓存中，后端在流式输出后也将完整的 AI 消息存入数据库，这样第二次实现了后端数据与本地缓存的同步。</font>
-
-
-
-<font style="color:#000000;">按照如上方法，我们正确使用 React Query 和 Zustand 管理了用户与 AI 发送消息这一场景中流式数据的处理。</font>
+按照如上方法，我们正确使用 React Query 和 Zustand 管理了用户与 AI 发送消息这一场景中流式数据的处理。
 
 #### <font style="color:#000000;">1. 获取历史消息（Query）</font>
 ```tsx
