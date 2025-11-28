@@ -1,28 +1,26 @@
-# <font style="color:rgb(64, 64, 64);">iframe 是什么？</font>
-`<font style="color:rgb(64, 64, 64);background-color:rgb(236, 236, 236);"><iframe></font>`<font style="color:rgb(64, 64, 64);">是一个 HTML 元素，它能够在当前文档中嵌入另一个独立的 HTML 文档。你可以把它想象成一个“浏览器中的浏览器”。核心特点：</font>**<font style="color:rgb(64, 64, 64);">隔离，</font>**<font style="color:rgb(64, 64, 64);">拥有独立的 DOM 树，CSS 样式，Storage 和 Cookie。</font>
+# iframe 是什么？
+`<iframe>`是一个 HTML 元素，它能够在当前文档中嵌入另一个独立的 HTML 文档。你可以把它想象成一个“浏览器中的浏览器”。核心特点：**隔离**，拥有独立的 DOM 树，CSS 样式，Storage 和 Cookie。
 
 ```html
 <iframe src="https://example.com" width="800" title="Example Embed"></iframe>
 ```
 
 # iframe 的优缺点？
-**<font style="color:rgb(60, 60, 67);">缺点</font>**<font style="color:rgb(60, 60, 67);">：</font>
-
-1. **性能开销大**：<font style="color:rgb(64, 64, 64);">每个 iframe 都是一个完整的文档环境，创建和销毁成本很高。</font>
-2. **<font style="color:rgb(60, 60, 67);">SEO</font>**<font style="color:rgb(60, 60, 67);">：嵌入 iframe 中的内容通常不会被搜索引擎抓取。</font>
-3. **<font style="color:rgb(60, 60, 67);">用户体验</font>**<font style="color:rgb(60, 60, 67);">：iframe 的加载速度慢、嵌入网页的交互性不强，会影响用户体验。页面刷新导致 iframe 内部的状态丢失。</font>
-4. **<font style="color:rgb(60, 60, 67);">跨域限制</font>**<font style="color:rgb(60, 60, 67);">：与主页面不同源的 iframe 会受到浏览器的跨域策略限制，难以进行父子页面之间的直接通信。</font>
-5. **<font style="color:rgb(60, 60, 67);">安全问题</font>**<font style="color:rgb(60, 60, 67);">：</font><font style="color:rgb(64, 64, 64);">恶意网站可以将你的网站用 iframe 嵌入，并设置 </font>`**<font style="color:rgb(64, 64, 64);background-color:rgb(236, 236, 236);">opacity: 0</font>**`<font style="color:rgb(64, 64, 64);">，诱骗用户在你的网站上执行操作（如点赞、转账）。</font>
+**缺点：**
+1. 性能开销大：每个 iframe 都是一个完整的文档环境，创建和销毁成本很高。
+2. SEO：嵌入 iframe 中的内容通常不会被搜索引擎抓取。
+3. 用户体验：iframe 的加载速度慢、嵌入网页的交互性不强，会影响用户体验。页面刷新导致 iframe 内部的状态丢失。
+4. 跨域限制：与主页面不同源的 iframe 会受到浏览器的跨域策略限制，难以进行父子页面之间的直接通信。
+5. 安全问题：恶意网站可以将你的网站用 iframe 嵌入，并设置 **opacity: 0**，诱骗用户在你的网站上执行操作（如点赞、转账）。
 
 **优势：**
-
-1. **<font style="color:rgb(60, 60, 67);">隔离性</font>**<font style="color:rgb(60, 60, 67);">：</font>`<font style="color:rgb(52, 81, 178);background-color:rgba(142, 150, 170, 0.14);">iframe</font>`<font style="color:rgb(60, 60, 67);"> 中的内容与父页面是完全独立的，CSS 样式和 JavaScript 作用域互不影响。</font>
-2. **<font style="color:rgb(60, 60, 67);">安全性</font>**<font style="color:rgb(60, 60, 67);">：通过 </font>`<font style="color:rgb(52, 81, 178);background-color:rgba(142, 150, 170, 0.14);">sandbox</font>`<font style="color:rgb(60, 60, 67);"> 属性，可以限制 iframe 中内容的行为（如禁用脚本、阻止表单提交等），增加安全性。</font>
-3. **<font style="color:rgb(60, 60, 67);">动态加载</font>**<font style="color:rgb(60, 60, 67);">：可以异步加载内容，提升主页面的加载性能。</font>
+1. **隔离性**<font style="color:rgb(60, 60, 67);">：</font>`iframe` 中的内容与父页面是完全独立的，CSS 样式和 JavaScript 作用域互不影响。
+2. **安全性**：通过 `sandbox` 属性，可以限制 iframe 中内容的行为（如禁用脚本、阻止表单提交等），增加安全性。
+3. **动态加载**：可以异步加载内容，提升主页面的加载性能。
 
 # 如何与 iframe 通信？
 ## 同源 iframe
-<font style="color:rgb(64, 64, 64);">如果父页面和 iframe 页面拥有相同的</font>**<font style="color:rgb(64, 64, 64);">协议、域名、端口</font>**<font style="color:rgb(64, 64, 64);">，那么它们可以</font>**<font style="color:rgb(64, 64, 64);">无限制地</font>**<font style="color:rgb(64, 64, 64);">访问彼此的 DOM 和 JavaScript。</font>
+如果父页面和 iframe 页面拥有相同的协议、域名、端口，那么它们可以无限制地访问彼此的 DOM 和 JavaScript。
 
 ```javascript
 // 获取 iframe 的 window 对象
@@ -45,7 +43,7 @@ const topWindow = window.top;
 ```
 
 ## 跨域 iframe
-由于浏览器的**跨域限制，**严禁不同源的直接的 DOM 访问，需要借助`PostMessage API`
+由于浏览器的跨域限制，严禁不同源的直接的 DOM 访问，需要借助`PostMessage API`
 
 **发送消息方：**
 
@@ -93,6 +91,3 @@ interface MessageEvent<T = any> {
   readonly source: typeof MessagePort | null // 发送消息的 window 对象
 }
 ```
-
-# iframe 的使用场景
-## 基于 iframe 的微前端方案：无界
