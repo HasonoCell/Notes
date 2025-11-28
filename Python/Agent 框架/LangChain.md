@@ -316,7 +316,7 @@ result = agent.invoke(
 
 
 4. **上下文管理**：提供 trim messages、delete messages、summarize messages 等模式来处理超出 LLM 上下文窗口的长对话，需要使用到 LangChain 的中间件（Middlewar）机制，具体代码细节可查阅 [Short-term memory - Docs by LangChain](https://docs.langchain.com/oss/python/langchain/short-term-memory#trim-messages)
-5. **多途径访问**：可以通过 tools、动态提示函数、pre/post model hooks 等多种方式访问和修改短期记忆状态。
+5. **多途径访问**：可以通过 `tools`、`@after_model`、`@before_model`等多种方式访问和修改短期记忆状态（Command），可查询[Short-term memory - Docs by LangChain](https://docs.langchain.com/oss/python/langchain/short-term-memory#write-short-term-memory-from-tools)
 ```python
 from langchain.agents import create_agent, AgentState
 from langchain.tools import tool, ToolRuntime
