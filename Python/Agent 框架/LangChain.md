@@ -1,7 +1,5 @@
 所有详细的信息都可以在[官方文档](https://docs.langchain.com/)中找到，这里主要记录学习过程中遇到的重难点以及容易混淆的地方。
 
-
-
 我认为可以将 LangChain 分为这几大核心组件去学习，快速的理清架构有助于形成知识体系，后续笔记也将围绕这几个核心组件展开：
 
 1. Agents
@@ -14,7 +12,6 @@
 
 ### Agents
 其实现在做 AI 应用 90% 都是在做 Agent，LangChain 通过 `create_agent` 这一核心函数来创建一个 agent，该函数底层依赖的是 LangGraph 的功能，从此处也不难看出，LangChain 可以看作是基于 LangGraph 更上一层的封装，平时开发 Agent 应用基本都可以使用 LangChain，除了需要对 Agent 的执行流程有高度的自定义化，那么就需要使用 LangGraph。
-
 
 
 Agent 本质：[An LLM Agent runs tools in a loop to achieve a goal](https://simonwillison.net/2025/Sep/18/agents/)，即“Agent 是一个不断循环重复以达成目标的系统”。组成一个简单的 Agent 的几个最核心的要素无非是：
@@ -31,15 +28,13 @@ Agent 本质：[An LLM Agent runs tools in a loop to achieve a goal](https://sim
 ### Model
 [https://docs.langchain.com/oss/python/langchain/models](https://docs.langchain.com/oss/python/langchain/models) 完整文档
 
-
-
 #### Model 在 LangChain 中的使用场景
-1. **<font style="color:rgb(24, 25, 25);">With agents</font>**<font style="color:rgb(63, 65, 65);">，即在创建一个 Agent 时被使用。</font>
-2. **<font style="color:rgb(24, 25, 25);">Standalone</font>**<font style="color:rgb(63, 65, 65);">，即单独被使用，跳出 Agent Loop，完成文本生成、分类或提取等任务。</font>
+1. **With agents**，即在创建一个 Agent 时被使用。
+2. **Standalone**，即单独被使用，跳出 Agent Loop，完成文本生成、分类或提取等任务。
 
-<font style="color:rgb(63, 65, 65);">由于 Model 使用场景的不同，要想让 Model 使用 Tools 也有不同的方法。</font>
+由于 Model 使用场景的不同，要想让 Model 使用 Tools 也有不同的方法。
 
-1. <font style="color:rgb(63, 65, 65);">对于 Agent 中的 Model，可以直接在通过 </font>`<font style="color:rgb(63, 65, 65);">create_agent</font>`<font style="color:rgb(63, 65, 65);">函数创建 Agent 时传入一个 </font>`<font style="color:rgb(63, 65, 65);">tools</font>`<font style="color:rgb(63, 65, 65);">数组</font>
+1. 对于 Agent 中的 Model，可以直接在通过 `create_agent` 函数创建 Agent 时传入一个 `tools` 数组
 
 ```python
 agent = create_agent(
