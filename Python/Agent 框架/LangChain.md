@@ -320,6 +320,7 @@ result = agent.invoke(
 ```python
 from langchain.agents import create_agent, AgentState
 from langchain.tools import tool, ToolRuntime
+from typing import cast
 
 
 class CustomState(AgentState):
@@ -331,7 +332,9 @@ def get_user_info(
 ) -> str:
     """Look up user info."""
     # 通过 runtime，我们访问到了持久化数据
-    user_id = runtime.state["user_id"]
+    # cast 是 Python 提供的一个工具类型，用来获得更好的类型提示
+    state = cast(CustomState, runtime.state)
+    user_id = state["user_id"]
     return "User is John Smith" if user_id == "user_123" else "Unknown user"
 
 agent = create_agent(
