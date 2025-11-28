@@ -254,3 +254,6 @@ def summarize_conversation(runtime: ToolRuntime) -> str:
 
 3. Store：记录持久化储存的各种数据，可以跨对话保存各种信息
 4. Stream Writer：实时转播员，在工具执行过程中不断向用户报告进度。
+
+### Memory
+#### Short-term Memory
