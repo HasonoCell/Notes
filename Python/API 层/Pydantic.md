@@ -1,7 +1,5 @@
 Pydantic 用来在 Python 程序运行时对数据提供**自动校验，转换**等功能，就类似于 TS 生态的 Zod。只需要 20％ 的核心功能就可以解决开发过程中 80% 的问题。
 
-
-
 ### 基础模型：BaseModel
 Pydantic 的一切都围绕 `BaseModel` 展开。
 
@@ -33,7 +31,6 @@ except Exception as e:
 ```
 
 
-
 ### 更严格的约束 ：Field
 如果只写 `age: int`，用户输入 1000 岁也是合法的。这时候需要用 `Field` 来加限制。
 
@@ -53,11 +50,8 @@ p = Product(name="iPhone", price=999, tags=["phone", "tech"])
 print(p)
 ```
 
-### 自定义校验
 ### 自定义验证 (`@field_validator`)
 如果内置的 `gt` (大于) 等规则不够用，比如你要验证“名字必须以 User 开头”，可以用装饰器写 Python 代码来验证。
-
-
 
 ```python
 from pydantic import BaseModel, field_validator

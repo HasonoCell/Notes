@@ -103,7 +103,7 @@ openai_model = ChatOpenAI(
 
 
 
-<font style="color:#000000;">方法二：使用 </font>`<font style="color:#000000;">init_chat_model</font>`<font style="color:#000000;"> 工厂函数</font>
+方法二：使用 `init_chat_model` 工厂函数
 
 ```python
 from langchain.chat_models import init_chat_model
@@ -114,25 +114,25 @@ model = init_chat_model(
 )
 ```
 
-<font style="color:#000000;">这是一种更高阶、更抽象的“工厂”模式。你不需要导入具体的模型类，而是调用一个通用的 </font>`<font style="color:#000000;">init_chat_model</font>`<font style="color:#000000;"> 函数，并通过一个特殊的字符串标识符（</font>`<font style="color:#000000;">"openai:qwen3-max"</font>`<font style="color:#000000;">）来告诉它要创建哪种模型。</font>`<font style="color:#000000;">init_chat_model</font>`<font style="color:#000000;"> 的工作流程是：</font>
+这是一种更高阶、更抽象的“工厂”模式。你不需要导入具体的模型类，而是调用一个通用的 `init_chat_model` 函数，并通过一个特殊的字符串标识符（`"openai:qwen3-max"`）来告诉它要创建哪种模型。`init_chat_model` 的工作流程是：
 
 1. 自动解析字符串表示符，比如“gpt-5”可以解析为“openai:gpt-5”，“claude-4.5”可以解析为“anthropic:claude-4.5”，但是对于 qwen 这种通过兼容 openai 接口实现调用的模型来说就需要显式注明了，因为 LangChain 无法自动识别出它的模型厂商
 2. 调用对应的模型厂商集成包，比如`langchain_openai`来实现 Model 的创建。
 
 <font style="color:#000000;"></font>
 
-**优点**<font style="color:#000000;">：无需记住和导入每个模型提供商的特定类路径，并且允许你通过配置文件或环境变量来动态指定模型，而无需更改代码中的 </font>`<font style="color:#000000;">import</font>`<font style="color:#000000;"> 语句。例如，你可以将 </font>`<font style="color:#000000;">"openai:qwen3-max"</font>`<font style="color:#000000;"> 存储在一个配置文件中。</font>
+**优点**：无需记住和导入每个模型提供商的特定类路径，并且允许你通过配置文件或环境变量来动态指定模型，而无需更改代码中的 import 语句。例如，你可以将 "openai:qwen3-max" 存储在一个配置文件中。
 
 <font style="color:#000000;"></font>
 
-<font style="color:#000000;">LangChain 还允许动态使用 Model（即一个 Agent 可以在执行过程中使用多个不同的 Agent），可以查阅</font>[https://docs.langchain.com/oss/python/langchain/agents#dynamic-model](https://docs.langchain.com/oss/python/langchain/agents#dynamic-model)
+LangChain 还允许动态使用 Model（即一个 Agent 可以在执行过程中使用多个不同的 Agent），可以查阅[https://docs.langchain.com/oss/python/langchain/agents#dynamic-model](https://docs.langchain.com/oss/python/langchain/agents#dynamic-model)
 
 ---
 
 ### Message
 #### Message 和传统 Prompt 的区别
-`<font style="color:rgb(17, 24, 39);">Prompt</font>`<font style="color:rgb(44, 44, 54);">通常指给模型的输入指令或问题，是一个相对宽泛的概念，主要关注内容本身；而</font>`<font style="color:rgb(17, 24, 39);">Message</font>`<font style="color:rgb(44, 44, 54);">是 LangChain 中的</font>**<font style="color:rgb(17, 24, 39);">基本上下文单元</font>**<font style="color:rgb(44, 44, 54);">，是结构化的对象，不仅包含</font>**<font style="color:rgb(44, 44, 54);">内容</font>**<font style="color:rgb(44, 44, 54);">，还包含</font>**<font style="color:rgb(44, 44, 54);">角色</font>**<font style="color:rgb(44, 44, 54);">、</font>**<font style="color:rgb(44, 44, 54);">元数据</font>**<font style="color:rgb(44, 44, 54);">等完整对话状态信息。Message 可以看作是对 Prompt 更进一步抽象，使得用户与模型的对话都可以被拆分为一条条独立的 Message。</font>
 
+Prompt 通常指给模型的输入指令或问题，是一个相对宽泛的概念，主要关注内容本身；而 Message 是 LangChain 中的基本上下文单元，是结构化的对象，不仅包含内容，还包含角色、元数据等完整对话状态信息。Message 可以看作是对 Prompt 更进一步抽象，使得用户与模型的对话都可以被拆分为一条条独立的 Message。
 <font style="color:rgb(44, 44, 54);"></font>
 
 ```python
@@ -149,7 +149,7 @@ messages = [
 ---
 
 #### Message 的两种创建方式
-LangChain 允许两种方式去创建**多种角色**的 Message：`<font style="color:rgb(63, 65, 65);background-color:rgb(244, 246, 246);">Dictionary format</font>`<font style="color:rgb(63, 65, 65);background-color:rgb(244, 246, 246);">和 </font>`<font style="color:rgb(63, 65, 65);background-color:rgb(244, 246, 246);">Message objects</font>`<font style="color:rgb(63, 65, 65);background-color:rgb(244, 246, 246);"></font>
+LangChain 允许两种方式去创建**多种角色**的 Message：Dictionary format 和 Message objects
 
 ```python
 # Dictionary format
@@ -164,7 +164,6 @@ response = model.invoke(conversation)
 print(response)  # AIMessage("J'adore créer des applications.")
 ```
 
-**<font style="color:rgb(63, 65, 65);background-color:rgb(244, 246, 246);"></font>**
 
 ```python
 # Message objects
@@ -223,7 +222,7 @@ def get_account_balance(runtime: ToolRuntime) -> str:
 
 ToolRuntime 包括四个核心组件：
 
-1. Context：提供**<font style="color:rgb(17, 24, 39);">不可变的配置信息</font>**<font style="color:rgb(44, 44, 54);">，在整个对话过程中不会改变。通过 Context，一个工具函数就知道自己是在为哪个用户服务，但 Model 不需要知道这些细节。</font>
+1. Context：提供不可变的配置信息，在整个对话过程中不会改变。通过 Context，一个工具函数就知道自己是在为哪个用户服务，但 Model 不需要知道这些细节。
 
 ```python
 @dataclass
@@ -253,6 +252,5 @@ def summarize_conversation(runtime: ToolRuntime) -> str:
     return f"当前对话：{human_count}条用户消息，{ai_count}条AI回复"
 ```
 
-3. Store：记录**持久化**储存的各种数据，可以**跨对话保存**各种信息
-4. <font style="color:rgb(44, 44, 54);">Stream Writer：</font>**<font style="color:rgb(17, 24, 39);">实时转播员</font>**<font style="color:rgb(44, 44, 54);">，在工具执行过程中不断向用户报告进度。</font>
-
+3. Store：记录持久化储存的各种数据，可以跨对话保存各种信息
+4. Stream Writer：实时转播员，在工具执行过程中不断向用户报告进度。

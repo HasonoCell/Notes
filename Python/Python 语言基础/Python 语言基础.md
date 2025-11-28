@@ -1,13 +1,4 @@
 ## 一，运行环境和包管理器
-| **<font style="color:rgb(31, 31, 31);">前端 (Node.js 生态)</font>** | **<font style="color:rgb(31, 31, 31);">Python 生态</font>** | **<font style="color:rgb(31, 31, 31);">说明</font>** |
-| --- | --- | --- |
-| **<font style="color:rgb(31, 31, 31);">Node.js</font>** | **<font style="color:rgb(31, 31, 31);">Python Interpreter</font>** | <font style="color:rgb(31, 31, 31);">运行时环境</font> |
-| **<font style="color:rgb(31, 31, 31);">npm / yarn</font>** | **<font style="color:rgb(31, 31, 31);">pip</font>** | <font style="color:rgb(31, 31, 31);">包管理工具 (安装库)</font> |
-| **<font style="color:rgb(31, 31, 31);">package.json</font>** | **<font style="color:rgb(31, 31, 31);">requirements.txt</font>** | <font style="color:rgb(31, 31, 31);">依赖列表文件</font> |
-| **<font style="color:rgb(31, 31, 31);">node_modules</font>** | **<font style="color:rgb(31, 31, 31);">venv (Virtual Environment)</font>** | <font style="color:rgb(31, 31, 31);">存放依赖的文件夹</font> |
-
-
-
 
 <font style="color:rgb(31, 31, 31);">当新建一个</font>`<font style="color:rgb(31, 31, 31);">Python</font>`<font style="color:rgb(31, 31, 31);">项目时，通常有如下一套标准操作流程（如同</font>`<font style="color:rgb(31, 31, 31);">npm init</font>`<font style="color:rgb(31, 31, 31);">）：</font>
 
