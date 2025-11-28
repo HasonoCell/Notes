@@ -108,10 +108,10 @@ HTTP/2 提出了`Stream`的概念：让多个请求可以“并行”地在同�
 #### HTTP/1.1 Keep-Alive
 + **目的**： 解决创建TCP连接的高昂开销。在早期的HTTP/1.0中，每个请求-响应都需要建立一个全新的TCP连接（三次握手），完成后立即关闭（四次挥手），这非常低效。
 + **工作机制**
-    1. 客户端在请求头中带上 `Connection: Keep-Alive</font>`<font style="color:rgb(15, 17, 21);">。</font>
-    2. <font style="color:rgb(15, 17, 21);">服务器同意后，会在响应头中也带上 </font>`<font style="color:rgb(15, 17, 21);">Connection: Keep-Alive</font>`<font style="color:rgb(15, 17, 21);">。</font>
-    3. <font style="color:rgb(15, 17, 21);">此时，这个TCP连接不会在请求完成后关闭，而是保持打开状态，允许后续的请求继续使用它。</font>
-+ **关键特性与问题**<font style="color:rgb(15, 17, 21);">：</font>
+    1. 客户端在请求头中带上 `Connection: Keep-Alive`。
+    2. 服务器同意后，会在响应头中也带上 `Connection: Keep-Alive`。
+    3. 此时，这个TCP连接不会在请求完成后关闭，而是保持打开状态，允许后续的请求继续使用它。
++ **关键特性与问题**：
     - **串行化（队头阻塞 - Head-of-Line Blocking）**<font style="color:rgb(15, 17, 21);">： 这是最核心的问题。虽然在同一个连接上可以发送多个请求，但这些请求必须是</font>**串行的**<font style="color:rgb(15, 17, 21);">。客户端必须等到上一个请求的响应完全接收完毕后，才能发出下一个请求。如果第一个请求的响应很慢，就会“阻塞”后面所有已经发送的请求。</font>
     - **无状态性**<font style="color:rgb(15, 17, 21);">： 请求和响应都是完整的报文，没有标识符来区分哪个响应属于哪个请求，全靠顺序来维护。</font>
     - **冗余头部**<font style="color:rgb(15, 17, 21);">： 每个请求都必须携带完整的HTTP头部（如Cookie、User-Agent等），即使它们和之前的请求一模一样，造成大量冗余和带宽浪费。</font>
