@@ -1,24 +1,20 @@
-# <font style="color:rgb(64, 64, 64);">SSE</font>
-**<font style="color:rgb(64, 64, 64);">服务器发送事件（Server-Sent Events, SSE）</font>**<font style="color:rgb(64, 64, 64);">允许客户端通过 HTTP 连接从服务器实时接收单向数据流（服务器 → 客户端），常用于实现实时更新、通知推送等场景。</font>
+# SSE
+服务器发送事件（Server-Sent Events, SSE）允许客户端通过 HTTP 连接从服务器实时接收单向数据流（服务器 → 客户端），常用于实现实时更新、通知推送等场景。
 
-<font style="color:rgb(64, 64, 64);"></font>
+比如在 AI 对话平台项目中，想要流式返回 AI 的响应结果，SSE 就是再好不过的选择，下面的代码例子也会围绕流式返回 AI 消息这一场景展开。
 
-<font style="color:rgb(64, 64, 64);">比如在 AI 对话平台项目中，想要流式返回 AI 的响应结果，SSE 就是再好不过的选择，下面的代码例子也会围绕流式返回 AI 消息这一场景展开。</font>
+核心特点
+1. 单向通信：服务器主动推送数据到客户端，客户端不能通过此连接向服务器发送数据（如需双向通信，应使用 WebSocket）。
 
-## <font style="color:rgb(64, 64, 64);">核心特点</font>
-1. **<font style="color:rgb(64, 64, 64);">单向通信</font>**<font style="color:rgb(64, 64, 64);">  
-</font><font style="color:rgb(64, 64, 64);">服务器主动推送数据到客户端，客户端</font>**<font style="color:rgb(64, 64, 64);">不能</font>**<font style="color:rgb(64, 64, 64);">通过此连接向服务器发送数据（如需双向通信，应使用 WebSocket）。</font>
-2. **<font style="color:rgb(64, 64, 64);">基于 HTTP/HTTPS</font>**<font style="color:rgb(64, 64, 64);">  
-</font><font style="color:rgb(64, 64, 64);">使用简单 HTTP 长连接（Keep-Alive），兼容现有网络设施（如代理、防火墙）。</font>
-3. **<font style="color:rgb(64, 64, 64);">自动重连</font>**<font style="color:rgb(64, 64, 64);">  
-</font><font style="color:rgb(64, 64, 64);">连接断开时，浏览器会自动尝试重新连接（可配置重试时间）。</font>
-4. **<font style="color:rgb(64, 64, 64);">文本数据传输</font>**<font style="color:rgb(64, 64, 64);">  
-</font><font style="color:rgb(64, 64, 64);">数据格式为 UTF-8 文本（支持 JSON、纯文本等）。</font>
+2. 基于 HTTP/HTTPS：使用简单 HTTP 长连接（Keep-Alive），兼容现有网络设施（如代理、防火墙）。
 
-## 使用方法
-在讲解核心代码之前，先更详细的解释一下 **SSE 连接中的数据格式。**
+3. 自动重连：连接断开时，浏览器会自动尝试重新连接（可配置重试时间）。
 
-SSE 协议本身是基于文本流的，每次后端写入一个 SSE 连接的内容可以包含如下字段<font style="color:#DF2A3F;">（注意格式：每行一个字段名，字段名后跟冒号和空格，每行要用两个</font>`<font style="color:#DF2A3F;">\n\n</font>`<font style="color:#DF2A3F;">结尾）</font>
+4. 文本数据传输：数据格式为 UTF-8 文本（支持 JSON、纯文本等）。
+
+
+
+SSE 协议本身是基于文本流的，每次后端写入一个 SSE 连接的内容可以包含如下字段（注意格式：每行一个字段名，字段名后跟冒号和空格，每行要用两个`\n\n`结尾）
 
 ```plain
 id: 123
@@ -35,207 +31,6 @@ data: 你好,世界
 
 在 TS 中，EventSource.onmessage 的回调参数类型是`MessageEvent<T>`，其中泛型参数 T 就是 data 字段的类型（可以使用`JSON.parse`解析）
 
-## 前端核心代码（使用 React）
-1. 创建新连接前，先检查是否存在旧连接，若存在则先关闭旧连接。
-2. 使用`EventSource API`，一个 JS 中自带的 Web API 来创建 SSE 连接。
-
-创建时，我们想将用户发送给 LLM 的 message 传给后端，但是 EventSource API 又不允许前端携带数据（它的本质就是一个 GET 请求，并且 SSE 也要求只能由服务端向客户端推送数据），这时候怎么办呢？
-
-这里有两种解决方法：
-
-    1. 使用`encodeURIComponent`，将 message 嵌入到 URL。  
-缺点：<font style="color:#DF2A3F;">适合简单数据传输，不适合超大文本或大文件传送，不常用。</font>
-    2. 先发送一次 POST 请求，将携带的数据发送给后端，再建立 SSE 连接<font style="color:#DF2A3F;">（更常用）。  
-</font>如果我们在创建 SSE 请求时还想携带上 Token（需要设置`request.header`）而原生的 EventSource 是不支持设置请求头的，这时候我们可以使用 [EventSourcePolyfill](https://www.npmjs.com/package/event-source-polyfill) 这个第三方库，它是一个支持 SSE 请求也支持设置请求头的解决方案，操作简单方便。
-
-此处的演示我们就使用`encodeURIComponent`了。
-
-3. 通过`onmessage`监听后端每一次返回的数据，并进行数据处理（解析JSON）。
-4. 通过`eventSource.close()`关闭连接。
-
-```tsx
-const [input, setInput] = useState("");
-const [response, setResponse] = useState("");
-const [loading, setLoading] = useState(false);
-const eventSourceRef = useRef<EventSource | null>(null);
-
-const handleSend = () => {
-  setLoading(true);
-  setResponse("");
-
-  // 关闭之前的连接
-  if (eventSourceRef.current) {
-    eventSourceRef.current.close();
-  }
-
-  try {
-    // 创建 EventSource 连接
-    const eventSource = new EventSource(
-      `http://localhost:3000/chat/stream?message=${encodeURIComponent(input)}`
-    );
-
-    eventSourceRef.current = eventSource;
-
-    eventSource.onmessage = (event) => {
-      const data = event.data;
-
-      if (data === "[DONE]") {
-        setLoading(false);
-        eventSource.close();
-        return;
-      }
-
-      try {
-        const parsed = JSON.parse(data);
-        if (typeof parsed === "string") {
-          setResponse((prev) => prev + parsed);
-        } else if (parsed.error) {
-          setResponse((prev) => prev + `\n[错误: ${parsed.error}]`);
-          setLoading(false);
-          eventSource.close();
-        }
-      } catch (e) {
-        console.warn("Parse error:", e);
-      }
-    };
-
-    eventSource.onerror = (error) => {
-      console.error("EventSource error:", error);
-      setResponse("连接失败");
-      setLoading(false);
-      eventSource.close();
-    };
-
-    eventSource.onopen = () => {
-      console.log("EventSource connected");
-    };
-  } catch (error) {
-    console.error("EventSource creation error:", error);
-    setResponse("请求失败: " + (error as Error).message);
-    setLoading(false);
-  }
-};
-```
-
-## 后端核心代码（使用 Express + RxJS）
-1. `GET`路由匹配前端`EventSource`发起的请求，并设置 SSE 连接规定的特殊响应头。
-2. 使用 RxJS 处理流式数据并返回（`res.write()`方法，注意<font style="color:#DF2A3F;">每传输一条数据要加上</font>`<font style="color:#DF2A3F;">\n\n</font>`<font style="color:#DF2A3F;">分隔符</font>）。
-
-```typescript
-import express from "express";
-import OpenAI from "openai";
-import cors from "cors";
-import { Subject, from, catchError, of, tap, filter, map } from "rxjs";
-
-const app = express();
-const PORT = 3000;
-
-app.use(express.json());
-app.use(cors());
-
-const openai = new OpenAI({
-  apiKey: "YOUR-API-KEY",
-  baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-});
-
-// SSE 流式聊天接口
-app.get("/chat/stream", async (req, res) => {
-  const { message } = req.query;
-
-  if (!message || typeof message !== "string") {
-    res.status(400).json({ error: "message parameter is required" });
-    return;
-  }
-
-  // 设置 SSE 响应头
-  res.writeHead(200, {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    "Connection": "keep-alive",
-  });
-
-  // streamSubject 是一个 RxJS Subject，既是 Observer(对 from(completion) 的订阅) 
-  // 也是 Observable(将数据发送给前端)。
-  // 它就像一条传送带，最初是空的，只有当有数据 next 进来时才会流动。
-  // 这里它的作用是作为“出口”，把最终要推送给前端（SSE）的数据传递出去。
-  const streamSubject = new Subject<string>();
-
-  // 订阅 streamSubject，每有数据就通过 res.write 推送到前端 SSE。
-  streamSubject
-    .pipe(
-      tap((data) => {
-        res.write(`data: ${JSON.stringify(data)}\n\n`);
-      }),
-      catchError((error) => {
-        res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
-        res.end();
-        return of();
-      })
-    )
-    .subscribe({
-      complete: () => {
-        res.write("data: [DONE]\n\n");
-        res.end();
-      },
-    });
-
-  try {
-    // from(completion) 是另一个 Observable。
-    // 它把 OpenAI 的异步流式响应（completion）转成 RxJS Observable，
-    // 就像是“生产线”源头，不断产出 chunk。
-    const completion = await openai.chat.completions.create({
-      model: "qwen-flash",
-      messages: [{ role: "user", content: message }],
-      stream: true,
-    });
-
-    // 对 from(completion) 进行一系列处理：
-    // 1. 过滤无效 chunk
-    // 2. 取出内容
-    // 3. 打印到控制台
-    // 4. 最终通过 streamSubject.next(content) 放到“传送带”上
-    from(completion)
-      .pipe(
-        filter((chunk) => chunk.choices && chunk.choices.length > 0),
-        map((chunk) => chunk.choices[0]?.delta?.content || ""),
-        filter((content) => content.length > 0),
-        tap((content) => console.log("Streaming:", content)),
-        catchError((error) => {
-          console.error("OpenAI stream error:", error);
-          streamSubject.error(error);
-          return of();
-        })
-      )
-      .subscribe({
-        // 这里 next 的每个 content 都会被放到 streamSubject 上，
-        // streamSubject 订阅者（上面）会把它推送给前端。
-        next: (content) => {
-          if (content) {
-            streamSubject.next(content);
-          }
-        },
-        error: (error) => {
-          streamSubject.error(error);
-        },
-        complete: () => {
-          streamSubject.complete();
-        },
-      });
-  } catch (error) {
-    console.error("Error creating completion:", error);
-    streamSubject.error(error);
-  }
-
-  // 处理客户端断开连接，关闭“传送带”
-  req.on("close", () => {
-    streamSubject.complete();
-  });
-});
-
-app.listen(PORT, () => {
-  console.log("Server is running...");
-});
-```
 
 # WebSocket
 ## WebSocket 是什么？

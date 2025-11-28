@@ -4,35 +4,35 @@
 容器`(containers)`：根据镜像，通过**虚拟技术**给**宿主机**的应用程序封装的一个个独立的运行环境，和**虚拟机**的根本区别是每个虚拟机都拥有一个操作系统的完整内核，而容器之间共用同一个系统内核
 
 ## 常用命令
-`<font style="color:rgb(31, 9, 9);">docker images</font>`<font style="color:rgb(31, 9, 9);"> 列出下载的所有镜像</font>
+`docker images` 列出下载的所有镜像
 
-`<font style="color:rgb(31, 9, 9);">docker ps</font>`<font style="color:rgb(31, 9, 9);"> 查看正在运行的容器 (ps 代表 process status)</font>
+`docker ps` 查看正在运行的容器 (ps 代表 process status)
 
-`<font style="color:rgb(31, 9, 9);">docker ps</font>`<font style="color:rgb(31, 9, 9);"> 查看所有容器（不管是否在运行）</font>
+`docker ps` 查看所有容器（不管是否在运行）
 
-`<font style="color:rgb(31, 9, 9);">docker pull <镜像地址></font>`<font style="color:rgb(31, 9, 9);"> 下载镜像</font>
+`docker pull <镜像地址>` 下载镜像
 
-`<font style="color:rgb(31, 9, 9);">docker rmi <镜像名称或ID></font>`<font style="color:rgb(31, 9, 9);"> 删除镜像</font>
+`docker rmi <镜像名称或ID>` 删除镜像
 
-`<font style="color:rgb(31, 9, 9);">docker rm <容器名称或ID></font>`<font style="color:rgb(31, 9, 9);"> 删除容器，添加</font>`<font style="color:rgb(31, 9, 9);">-f</font>`<font style="color:rgb(31, 9, 9);">参数会强制清除正在运行的容器</font>
+`docker rm <容器名称或ID>` 删除容器，添加`-f`参数会强制清除正在运行的容器
 
-`<font style="color:rgb(31, 9, 9);">docker run <镜像名称或ID></font>`<font style="color:rgb(31, 9, 9);"> 使用镜像创建容器，会占用当前窗口</font>
+`docker run <镜像名称或ID>` 使用镜像创建容器，会占用当前窗口
 
-`<font style="color:rgb(31, 9, 9);">docker run -d <镜像名称或ID></font>`<font style="color:rgb(31, 9, 9);"> 启用分离模式 (detached) 使用镜像创建容器，不会占用当前窗口</font>
+`docker run -d <镜像名称或ID>` 启用分离模式 (detached) 使用镜像创建容器，不会占用当前窗口
 
-`<font style="color:rgb(31, 9, 9);">docker run -p <宿主机端口>:<容器端口> <镜像名称或ID></font>`<font style="color:rgb(31, 9, 9);"> 启用端口映射运行容器</font>
+`docker run -p <宿主机端口>:<容器端口> <镜像名称或ID>` 启用端口映射运行容器
 
-`<font style="color:rgb(31, 9, 9);">docker run -v <宿主机文件目录>:<容器文件目录> <镜像名称或ID></font>`<font style="color:rgb(31, 9, 9);"> 启用文件映射运行容器（实现容器内数据的持久化保存）</font>
+`docker run -v <宿主机文件目录>:<容器文件目录> <镜像名称或ID>` 启用文件映射运行容器（实现容器内数据的持久化保存）
 
-`docker run --network host <font style="color:rgb(31, 9, 9);"><镜像名称或ID></font>` 使用 host 网络模式运行容器，无需端口映射，直接通过宿主机的端口访问容器
+`docker run --network host <镜像名称或ID>` 使用 host 网络模式运行容器，无需端口映射，直接通过宿主机的端口访问容器
 
-`docker exec -it <font style="color:rgb(31, 9, 9);"><镜像名称或ID></font> /bin/sh` 为正在运行的容器启动一个交互式的 shell
+`docker exec -it <镜像名称或ID> /bin/sh` 为正在运行的容器启动一个交互式的 shell
 
-`<font style="color:rgb(31, 9, 9);">docker stop</font>`<font style="color:rgb(31, 9, 9);"> <镜像名称或ID> 停止正在运行的容器</font>
+`docker stop` <镜像名称或ID> 停止正在运行的容器
 
-`<font style="color:rgb(31, 9, 9);">docker start</font>`<font style="color:rgb(31, 9, 9);"><镜像名称或ID> 启动正在运行的容器</font>
+`docker start`<镜像名称或ID> 启动正在运行的容器
 
-`docker build -t <创建的镜像的名字> .`根据 Dockerfile 在当前目录内创建出镜像
+`docker build -t <创建的镜像的名字> .`根据 Dockerfile 在当前目录内创建出镜像**
 
 # 实战
 ## 使用 Docker 为一个极简后端运行容器

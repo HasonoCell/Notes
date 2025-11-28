@@ -22,7 +22,7 @@ targetWindow.postMessage(message, targetOrigin, [transfer]);
 
 
 
-`postMessage`发送出去的数据本质上是经过结构化克隆的（Structured Clone，也就是所谓的深克隆），那么就要求数据必须是可序列化的，<font style="color:#DF2A3F;">不能传输如函数，DOM 节点这样的非序列化数据。</font>
+`postMessage`发送出去的数据本质上是经过结构化克隆的（Structured Clone，也就是所谓的深克隆），那么就要求数据必须是可序列化的，不能传输如函数，DOM 节点这样的非序列化数据。
 
 #### 接收消息
 通过监听 `message` 事件：
@@ -149,7 +149,7 @@ self.onmessage = (e) => {
 
 
 
-**关于 Web Worker 的延申：**
+**关于 Web Worker 的扩展：**
 
 **Web Worker** 的设计初衷，就是为了给单线程的 JavaScript 带来一种**安全、简单**的多线程能力。
 
@@ -179,10 +179,7 @@ self.onmessage = (e) => {
 
 为了解决 `SharedArrayBuffer` 带来的竞争问题，JavaScript 提供了 `Atomics` 对象。它提供了一系列**原子操作**，确保这些操作在执行时不会被其他线程中断。利用 `Atomics`，你**可以实现更复杂的多线程编程概念**：
 
-+ `Atomics.wait()`** 和 **`Atomics.notify()`：可以用来实现线程的等待和唤醒，这是构建**互斥锁（Mutex）**的基础。
-+ `Atomics.store()`** 和 **`Atomics.load()`：保证了对共享内存的读写是原子性的。
-+ `Atomics.add()`**, **`Atomics.compareExchange()` 等：提供了原子性的“读-改-写”操作。
-
-> **结论**：通过 `SharedArrayBuffer` 和 `Atomics`，JavaScript **确实具备了实现复杂多线程编程（如互斥锁）的能力**，但这是一种需要开发者明确选择（opt-in）的高级功能，因为它也带来了传统多线程编程的复杂性和风险。
->
++ `Atomics.wait()` 和 `Atomics.notify()`：可以用来实现线程的等待和唤醒，这是构建互斥锁（Mutex）的基础。
++ `Atomics.store()` 和 `Atomics.load()`：保证了对共享内存的读写是原子性的。
++ `Atomics.add()`, `Atomics.compareExchange()` 等：提供了原子性的“读-改-写”操作。
 

@@ -44,7 +44,7 @@ git push origin -d <分支名>
 ```
 
 ### 一些 Git 的高级操作
-#### **一， 模拟冲突与解决 (Merge Conflict)**
+#### **1. 模拟冲突与解决 (Merge Conflict)**
 **场景**：你和同事同时修改了同一个文件的同一部分。当你们先后合并代码到主分支时，Git 不知道该保留谁的修改，于是就产生了“合并冲突”。
 
 **讲解**：  
@@ -102,8 +102,7 @@ git merge dev-B
 # Automatic merge failed; fix conflicts and then commit the result.
 ```
 
-4. **解决冲突**
-    - 打开 `README.md` 文件，你会看到类似下面的内容：
+4. **解决冲突**：打开 `README.md` 文件，你会看到类似下面的内容：
 
 ```git
 <<<<<<< HEAD
@@ -113,16 +112,19 @@ Project Readme by Developer B
 >>>>>>> dev-B
 ```
 
-    - **解读**：
-        * `<<<<<<< HEAD` 到 `=======` 之间是 `main` 分支（`HEAD` 指向的位置）当前的内容。
-        * `=======` 到 `>>>>>>> dev-B` 之间是来自 `dev-B` 分支的内容。
-    - **手动解决**：删除这些特殊标记行，并根据你的需要保留、修改或组合代码。例如，我们决定两者都保留一些信息：
+解读：
+`<<<<<<< HEAD` 到 `=======` 之间是 `main` 分支（`HEAD` 指向的位置）当前的内容。
+
+`=======` 到 `>>>>>>> dev-B` 之间是来自 `dev-B` 分支的内容。
+
+手动解决：删除这些特殊标记行，并根据你的需要保留、修改或组合代码。例如，我们决定两者都保留一些信息：
 
 ```git
 Project Readme updated by Developer A & B
 ```
 
-    - **在 VS Code 中解决**：VS Code 提供了非常方便的图形化界面来解决冲突。在冲突文件的上方，你会看到 "Accept Current Change | Accept Incoming Change | Accept Both Changes | Compare Changes" 的选项，点击它们可以快速解决冲突。
+在 VS Code 中解决：VS Code 提供了非常方便的图形化界面来解决冲突。在冲突文件的上方，你会看到 "Accept Current Change | Accept Incoming Change | Accept Both Changes | Compare Changes" 的选项，点击它们可以快速解决冲突。
+
 5. **提交解决后的结果**
 
 ```git
@@ -141,7 +143,7 @@ git commit
 
 ---
 
-#### **二，撤销更改的多种方式**
+#### **2. 撤销更改的多种方式**
 **场景**：代码写错了，或者提交了不想提交的内容，需要“反悔”。
 
 **讲解**：Git 提供了不同级别的“后悔药”，分别对应工作区、暂存区和版本库的修改。
@@ -183,11 +185,9 @@ git status
 ```
 
 3. **场景三：已经 **`commit`** 了，但发现提交错了，想撤销这次提交。**
-    - **方式A：撤销提交，但保留代码更改 (**`--soft`**)**
-        * **操作**：`git reset --soft HEAD~1`
-        * **效果**：撤销最近的一次提交，并将那次提交的所有更改放回暂存区。这非常适合修改 commit message 或将这次更改合并到下一次提交中。
-        * **演练**：
-
+- 方式A：撤销提交，但保留代码更改 (**`--soft`**)
+    操作：`git reset --soft HEAD~1`
+    效果：撤销最近的一次提交，并将那次提交的所有更改放回暂存区。这非常适合修改 commit message 或将这次更改合并到下一次提交中。
 ```git
 # 查看最近的提交记录
 git log --oneline
@@ -201,11 +201,9 @@ git log --oneline
 # 查看状态，会发现上次 commit 的内容已经回到暂存区
 git status
 ```
-
-    - **方式B：撤销提交，并彻底丢弃代码更改 (**`--hard`**) ****⚠️**** 危险操作**
-        * **操作**：`git reset --hard HEAD~1`
-        * **效果**：彻底移除最近的一次提交，并且工作区和暂存区的所有相关代码更改都会被**永久删除**。请务必确认不再需要这些代码时才使用。
-        * **演练**：
+- 方式B：撤销提交，并彻底丢弃代码更改 (**`--hard`**)
+    操作：`git reset --hard HEAD~1`
+    效果：彻底移除最近的一次提交，并且工作区和暂存区的所有相关代码更改都会被**永久删除**。请务必确认不再需要这些代码时才使用。
 
 ```git
 # 确保你有一个可以丢弃的 commit
@@ -270,7 +268,7 @@ git stash pop
 git status
 ```
 
-    - `pop`** vs **`apply`：`git stash pop` 会应用并删除 stash，而 `git stash apply` 只会应用，stash 记录会保留，你可以多次应用它。通常用 `pop` 就足够了。
+ `pop` vs `apply`：`git stash pop` 会应用并删除 stash，而 `git stash apply` 只会应用，stash 记录会保留，你可以多次应用它。通常用 `pop` 就足够了。
 
 ---
 
@@ -316,7 +314,8 @@ git rebase -i HEAD~3
 ```
 
 3. **编辑变基脚本**
-    - 执行上述命令后，Git 会打开一个文本编辑器，内容如下：
+   
+执行上述命令后，Git 会打开一个文本编辑器，内容如下：
 
 ```git
 pick 1a2b3c4 feat: Add initial content
@@ -330,8 +329,7 @@ pick 9g0h1i2 feat: Add second part
 # ... (其他命令)
 ```
 
-    - **我们的目标**：将这 3 个 commit 合并成一个。我们将第一个 `pick` 保留，把后面的两个改成 `s` (squash)。
-    - **修改后**：
+我们的目标：将这 3 个 commit 合并成一个。我们将第一个 `pick` 保留，把后面的两个改成 `s` (squash)。
 
 ```git
 pick 1a2b3c4 feat: Add initial content
@@ -339,9 +337,9 @@ s 5d6e7f8 fix: Correct a typo
 s 9g0h1i2 feat: Add second part
 ```
 
-    - 保存并关闭编辑器。
 4. **编写新的 Commit Message**
-    - 关闭上一个编辑器后，Git 会打开第二个编辑器，让你为合并后的新 commit 编写 message。内容包含了之前所有 commit 的 message。
+
+关闭上一个编辑器后，Git 会打开第二个编辑器，让你为合并后的新 commit 编写 message。内容包含了之前所有 commit 的 message。
 
 ```git
 # This is a combination of 3 commits.
@@ -355,20 +353,18 @@ fix: Correct a typo
 feat: Add second part
 ```
 
-    - 删除所有内容，编写一个清晰、完整的 message，例如：
+删除所有内容，编写一个清晰、完整的 message，例如：
 
 ```git
 feat: Implement the complete rebase-test feature
 ```
 
-    - 保存并关闭编辑器。
 5. **完成**
-    - 终端会提示 `Successfully rebased and updated refs/heads/feat/rebase-practice.`
-    - 再次查看历史，你会发现之前 3 个零碎的 commit 已经变成了一个干净的 commit。
+
+终端会提示 `Successfully rebased and updated refs/heads/feat/rebase-practice.`
+
+再次查看历史，你会发现之前 3 个零碎的 commit 已经变成了一个干净的 commit。
 
 ```git
 git log --oneline
 ```
-
----
-

@@ -1,6 +1,6 @@
-**<font style="color:rgb(64, 64, 64);">Esbuild</font>**<font style="color:rgb(64, 64, 64);">： 负责</font>**<font style="color:rgb(64, 64, 64);">预构建</font>**<font style="color:rgb(64, 64, 64);">和</font>**<font style="color:rgb(64, 64, 64);">压缩</font>**<font style="color:rgb(64, 64, 64);">这两个对速度要求极高的环节。</font>
+Esbuild： 负责预构建和压缩这两个对速度要求极高的环节。
 
-**<font style="color:rgb(64, 64, 64);">Rollup</font>**<font style="color:rgb(64, 64, 64);">： 负责</font>**<font style="color:rgb(64, 64, 64);">核心打包</font>**<font style="color:rgb(64, 64, 64);">环节（模块图构建、解析、转换、Tree-shaking、代码分割）。因其生态和打包输出优化非常成熟稳定。</font>
+Rollup： 负责核心打包环节（模块图构建、解析、转换、Tree-shaking、代码分割）。因其生态和打包输出优化非常成熟稳定。
 
 # Vite 常用配置项一览
 CSS 有关配置：
@@ -80,20 +80,18 @@ export default defineConfig({
 ```
 
 # Vite 的开发阶段构建过程
-1. `no-bundle`机制：**针对源代码（即项目中自己写的代码）**，不需要像 Webpack 一样打包好所有文件后再启动浏览器，Vite 在构建阶段直接**不打包！**采用浏览器原生支持的 ES Module 机制加载模块和文件，并且 Vite 采用了**按需加载**的方式，只有需要的模块才会发起浏览器 http 请求。
+1. `no-bundle`机制：**针对源代码（即项目中自己写的代码）**，不需要像 Webpack 一样打包好所有文件后再启动浏览器，Vite **在构建阶段直接不打包**！采用浏览器原生支持的 ES Module 机制加载模块和文件，并且 Vite 采用了按需加载的方式，只有需要的模块才会发起浏览器 http 请求。
 
-**注意：上述内容我们只是在说开发阶段 Vite 采用了不打包机制，而生产阶段 Vite 仍然会采用 Rollup 去打包文件，并采取一系列打包优化手段（Rollup 的打包配置项更丰富，能做到更好的优化）。**
-
-
+---
 
 2. 依赖预构建：针对第三方库（依赖），我们必须要确保**一些非 ES Module 格式的代码（比如 CommonJS）转为 ESM 模式，**这样才能在 Vite 中正常运行。此外我们知道，ESM 模块是`import`语句通过`http`请求拿到的，当某一个第三方库使用了太多的 ESM 组织内部代码，会导致我们的项目使用该库时出现大量的`http`**请求瀑布流（如下图）。**这个时候我们就需要将第三方库分散的文件整合到一起，减少 http 请求，优化性能。  
 ![](https://cdn.nlark.com/yuque/0/2025/webp/53866714/1755602201170-8f587442-47fb-4ec2-8f8b-c54abaddaed2.webp)
 
-对于上述需求**（规范格式和合并文件）**，Vite 采用了`Esbuild`进行**依赖预构建。**依赖预构建的产物会放在`node_modules`文件夹下的`.vite`文件夹中，此后在开发过程中对第三方依赖的请求路径重写到`.vite`文件夹下，并且对 Dev Server 设置了强缓存：
+	对于上述需求**（规范格式和合并文件）**，Vite 采用了`Esbuild`进行**依赖预构建。**依赖预构建的产物会放在`node_modules`文件夹下的`.vite`文件夹中，此后在开发过程中对第三方依赖的请求路径重写到`.vite`文件夹下，并且对 Dev Server 设置了强缓存：
 
 ![](https://cdn.nlark.com/yuque/0/2025/webp/53866714/1755602888933-80e2f0c0-21e1-443a-828e-39e1b262d833.webp)
 
-总结：开发阶段，Vite 采用了**浏览器加载原生 ESM 实现 no-bundle** 和 **Esbuild 实现第三方依赖预构建**的机制，实现了极速的开发体验。
+	总结：开发阶段，Vite 采用了**浏览器加载原生 ESM 实现 no-bundle** 和 **Esbuild 实现第三方依赖预构建**的机制，实现了极速的开发体验。
 
 
 

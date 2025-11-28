@@ -1,3 +1,14 @@
+# 什么是依赖注入（DI）？
+只需要通过 Controller 的函数参数和类型声明，就可以显式声明出该 Controller 所需要的依赖，然后通过装饰器的方式，FastAPI 就可以自动在“幕后”处理有关依赖的所有操作，然后直接注入给 Controller 使用，包括：
+
+* 解析请求（路径、查询、请求头、请求体）。
+- 转换数据类型。
+- 验证数据（根据 Path, Query, Field 等的规则）。
+- 创建 Pydantic 模型实例。
+- 处理所有可能的错误并生成标准化的错误响应。
+
+使得其不需要关心依赖从哪里来，如何被创建的，只需索要，得到后直接使用即可
+
 ```python
 from typing import Annotated
 from fastapi import FastAPI, Query, Path
@@ -11,16 +22,6 @@ class User(BaseModel):
 
 app = FastAPI()
 
-# 什么是 DI（依赖注入）？
-# 只需要通过 Controller 的函数参数和类型声明，就可以显式声明出该 Controller 所需要的依赖，
-# 然后通过装饰器的方式，FastAPI 就可以自动在“幕后”处理有关依赖的所有操作，然后直接注入给 Controller 使用，
-# 包括：
-#   解析请求（路径、查询、请求头、请求体）。
-#   转换数据类型。
-#   验证数据（根据 Path, Query, Field 等的规则）。
-#   创建 Pydantic 模型实例。
-#   处理所有可能的错误并生成标准化的错误响应。
-# 使得其不需要关心依赖从哪里来，如何被创建的，只需索要，得到后直接使用即可
 @app.get("/user/{id}")
 async def get_user(
     id: Annotated[int, Path(ge=1, title="The id of the user")],
