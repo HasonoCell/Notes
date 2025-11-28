@@ -280,7 +280,7 @@ agent.invoke(
 
 # 注意！thread_id 发生了改变，这是一次新的 conversation
 agent.invoke(
-    {"messages": [{"role": "user", "content": "Hi! My name is Joe."}]},
+    {"messages": [{"role": "user", "content": "What's your name?"}]},
     {"configurable": {"thread_id": "2"}},  
 )
 
@@ -316,7 +316,7 @@ result = agent.invoke(
 
 
 4. **上下文管理**：提供 trim messages、delete messages、summarize messages 等模式来处理超出 LLM 上下文窗口的长对话，需要使用到 LangChain 的中间件（Middlewar）机制，具体代码细节可查阅 [Short-term memory - Docs by LangChain](https://docs.langchain.com/oss/python/langchain/short-term-memory#trim-messages)
-5. **多途径访问**：可以通过 `tools`、`@after_model`、`@before_model`等多种方式访问和修改短期记忆状态（Command），可查询[Short-term memory - Docs by LangChain](https://docs.langchain.com/oss/python/langchain/short-term-memory#write-short-term-memory-from-tools)
+5. **多途径访问**：可以通过 `tools`、`@after_model`、`@before_model`等多种方式访问和修改短期记忆状态（Command）, `tools` 中获取到的 ToolRuntime 的 state 其实就是这里的 AgentState，只是说在工具函数中访问 state 可以避免将其包含的一些敏感信息暴露给 Model ，更多可查询[Short-term memory - Docs by LangChain](https://docs.langchain.com/oss/python/langchain/short-term-memory#write-short-term-memory-from-tools)
 ```python
 from langchain.agents import create_agent, AgentState
 from langchain.tools import tool, ToolRuntime
@@ -351,3 +351,13 @@ print(result["messages"][-1].content)
 # > User is John Smith.
 ```
 
+
+总的来看，LangChain 关于 Short-term Memory 的架构设计就是：
+1. Agent 创建时：通过 `state_schema = CustromState` 指定状态类型
+2. 对话创建时：维护一个 `AgentState` 状态实例
+3. 调用工具时：通过 `ToolRuntime` 访问到状态实例
+4. 状态持久化：通过 `checkpointer` 在 thread-level 持久化状态
+
+
+#### Long-term Memory
+[Long-term memory - Docs by LangChain](https://docs.langchain.com/oss/python/langchain/long-term-memory) 和 LangGraph 有关，待看。
