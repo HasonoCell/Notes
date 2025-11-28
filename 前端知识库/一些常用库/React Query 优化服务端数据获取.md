@@ -37,7 +37,7 @@
 
 按照如上方法，我们正确使用 React Query 和 Zustand 管理了用户与 AI 发送消息这一场景中流式数据的处理。
 
-#### <font style="color:#000000;">1. 获取历史消息（Query）</font>
+#### 1. 获取历史消息（Query）
 ```tsx
 // 获取历史消息列表
 const { data: messages = [], isLoading } = useQuery({
@@ -50,9 +50,8 @@ const { data: messages = [], isLoading } = useQuery({
 });
 ```
 
----
 
-#### <font style="color:#000000;">2. 发送用户消息并乐观更新（Mutation + Optimistic Update）</font>
+#### 2. 发送用户消息并乐观更新（Mutation + Optimistic Update）
 ```tsx
 const queryClient = useQueryClient();
 
