@@ -42,4 +42,3 @@ async def add_user(user: User):
     # - 'user' 参数已经是一个填充好数据的 User 实例！
     return {"message": "new user created successfully!", "user": user}
 ```
-
