@@ -10,5 +10,7 @@
   "obsidian-image-toolkit",
   "obsidian-custom-attachment-location",
   "obsidian-style-settings",
-  "mermaid-tools"
+  "mermaid-tools",
+  "templater-obsidian",
+  "calendar"
 ]
