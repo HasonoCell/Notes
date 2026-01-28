@@ -15,3 +15,17 @@ DDL 针对数据库的操作：
 
 DDL 针对数据库中表的操作：
 ![](assets/MySQL%20基础篇/file-20260128212717303.png)
+
+
+如何创建一个表：
+![](assets/MySQL%20基础篇/file-20260128213732854.png)
+比如：
+```sql
+create table tb_user(
+    -> id int comment '编号',
+    -> name varchar(50) comment '姓名',
+    -> age int comment '年龄',
+    -> gender varchar(1) comment '性别'
+    -> ) comment '用户表';
+```
+
