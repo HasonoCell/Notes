@@ -29,3 +29,7 @@ create table tb_user(
     -> ) comment '用户表';
 ```
 
+MySQL 中常见的数据类型：
+数字类型：Int，Float，Double
+字符串类型：Char，VarChar
+日期类型：Date，Year，Time，DateTime
