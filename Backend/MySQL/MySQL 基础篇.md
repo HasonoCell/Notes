@@ -42,3 +42,5 @@ MySQL 中常见的数据类型：
 ![](assets/MySQL%20基础篇/file-20260128225754478.png)
 
 ![](assets/MySQL%20基础篇/file-20260128225839864.png)
+
+![](assets/MySQL%20基础篇/file-20260128230042385.png)
