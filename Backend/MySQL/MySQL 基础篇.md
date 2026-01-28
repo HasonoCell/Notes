@@ -9,3 +9,9 @@
 SQL 语句的分类：
 ![](assets/MySQL%20基础篇/file-20260128211755106.png)
 
+## DDL
+DDL 针对数据库的操作：
+![](assets/MySQL%20基础篇/file-20260128212557924.png)
+
+DDL 针对数据库中表的操作：
+![](assets/MySQL%20基础篇/file-20260128212717303.png)
