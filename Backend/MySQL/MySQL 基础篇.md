@@ -22,14 +22,14 @@ DDL 针对数据库中表的操作：
 比如：
 ```sql
 create table tb_user(
-    -> id int comment '编号',
-    -> name varchar(50) comment '姓名',
-    -> age int comment '年龄',
-    -> gender varchar(1) comment '性别'
-    -> ) comment '用户表';
+	id int comment '编号',
+	name varchar(50) comment '姓名',
+    age int comment '年龄',
+    gender varchar(1) comment '性别'
+) comment '用户表';
 ```
 
 MySQL 中常见的数据类型：
-数字类型：Int，Float，Double
+数字类型：Int，Float，Double（默认为为 Signed，可以显式标注 Unsigned）
 字符串类型：Char，VarChar
 日期类型：Date，Year，Time，DateTime
