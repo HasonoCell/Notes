@@ -10,10 +10,10 @@ SQL 语句的分类：
 ![](assets/MySQL%20基础篇/file-20260128211755106.png)
 
 ## DDL
-DDL 针对数据库的操作：
+针对数据库的操作：
 ![](assets/MySQL%20基础篇/file-20260128212557924.png)
 
-DDL 针对数据库中表的操作：
+针对数据库中表的操作：
 ![](assets/MySQL%20基础篇/file-20260128212717303.png)
 
 
@@ -33,3 +33,5 @@ MySQL 中常见的数据类型：
 数字类型：Int，Float，Double（默认为为 Signed，可以显式标注 Unsigned）
 字符串类型：Char，VarChar
 日期类型：Date，Year，Time，DateTime
+
+如何修改一个表：
