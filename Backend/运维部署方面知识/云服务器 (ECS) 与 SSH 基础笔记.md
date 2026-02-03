@@ -172,3 +172,47 @@ systemctl reload nginx
 ```
 
 最后访问服务器公网 IP 进行验证。如上操作其实可以进一步标准化为一套完整的 CI/CD 流水线。
+
+## 6. 一个简单的前后端分离架构
+```graph TD
+    subgraph Client [用户端 (Browser/App)]
+        Browser[浏览器]
+    end
+
+    subgraph Aliyun_ECS [阿里云 ECS 服务器 (IP: 39.107.xxx.xxx)]
+        
+        %% 入口层
+        Nginx[Nginx 网关]
+        
+        %% 防火墙示意
+        Firewall{阿里云安全组}
+        
+        %% 静态资源区 (文件系统)
+        subgraph FileSystem [文件系统 /var/www]
+            ReactDist[React 打包文件 (dist)]
+            indexHTML[index.html]
+        end
+        
+        %% 后端服务区 (本机回环)
+        subgraph Backend [后端服务 (Localhost)]
+            FastAPI[Python FastAPI 服务]
+            DB[(未来可接数据库)]
+        end
+    end
+
+    %% 流量路径
+    Browser -- HTTP请求 (Port 80) --> Firewall
+    Firewall -- 允许通过 --> Nginx
+
+    %% Nginx 分流逻辑
+    Nginx -- 路径是 / --> ReactDist
+    ReactDist -. 找不到文件 (try_files) .-> indexHTML
+    
+    Nginx -- 路径是 /api --> FastAPI
+    FastAPI -- JSON 数据 --> Nginx
+    
+    %% 端口标注
+    style Nginx fill:#f9f,stroke:#333,stroke-width:2px,color:black
+    style FastAPI fill:#bbf,stroke:#333,stroke-width:2px,color:black
+    style Firewall fill:#ff9,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5,color:black
+```
