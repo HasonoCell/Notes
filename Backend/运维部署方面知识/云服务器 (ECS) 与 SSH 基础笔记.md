@@ -173,46 +173,76 @@ systemctl reload nginx
 
 最后访问服务器公网 IP 进行验证。如上操作其实可以进一步标准化为一套完整的 CI/CD 流水线。
 
-## 6. 一个简单的前后端分离架构
-```graph TD
-    subgraph Client [用户端 (Browser/App)]
-        Browser[浏览器]
-    end
+## 6. 使用 ECS 实现一个简单的前后端分离架构
 
-    subgraph Aliyun_ECS [阿里云 ECS 服务器 (IP: 39.107.xxx.xxx)]
-        
-        %% 入口层
-        Nginx[Nginx 网关]
-        
-        %% 防火墙示意
-        Firewall{阿里云安全组}
-        
-        %% 静态资源区 (文件系统)
-        subgraph FileSystem [文件系统 /var/www]
-            ReactDist[React 打包文件 (dist)]
-            indexHTML[index.html]
-        end
-        
-        %% 后端服务区 (本机回环)
-        subgraph Backend [后端服务 (Localhost)]
-            FastAPI[Python FastAPI 服务]
-            DB[(未来可接数据库)]
-        end
-    end
+**核心知识点**：反向代理、动静分离、虚拟环境、Nginx 配置
 
-    %% 流量路径
-    Browser -- HTTP请求 (Port 80) --> Firewall
-    Firewall -- 允许通过 --> Nginx
+### 架构逻辑：动静分离
 
-    %% Nginx 分流逻辑
-    Nginx -- 路径是 / --> ReactDist
-    ReactDist -. 找不到文件 (try_files) .-> indexHTML
+现代 Web 应用通常采用前后端分离模式：
+
+- **静态资源 (Static)**：HTML/CSS/JS/图片。由 **Nginx** 直接读取硬盘文件返回，速度最快。
     
-    Nginx -- 路径是 /api --> FastAPI
-    FastAPI -- JSON 数据 --> Nginx
+- **动态资源 (Dynamic)**：API 接口/数据库查询。由 **Nginx** 转发给后端应用（Python/Go/Java）处理。
     
-    %% 端口标注
-    style Nginx fill:#f9f,stroke:#333,stroke-width:2px,color:black
-    style FastAPI fill:#bbf,stroke:#333,stroke-width:2px,color:black
-    style Firewall fill:#ff9,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5,color:black
+### Nginx 核心配置的一些实操
+
+配置文件位置：`/etc/nginx/sites-available/default`
+
+关键指令解析：
+
+**`server_name`**: 你的域名（如果没有就写 `_`）。
+    
+**`root`**: 静态文件存放的根目录。
+    
+**`try_files $uri $uri/ /index.html`**：
+- **作用**：解决 SPA (React/Vue) 路由刷新 404 的问题。  
+- **逻辑**：先找文件，再找文件夹，都找不到就返回首页（让前端路由接管）。
+        
+**`proxy_pass http://127.0.0.1:8000`**：**作用**：反向代理，将请求转发给后端。
+        
+    
+注意：不要在 `location /api` 这种接口转发块里写 `try_files`，否则请求会在本地被拦截，永远到不了后端。
+
+### 核心架构图
+
+```Plaintext
++-----------------------------------------------------------------------+
+|   User's Browser (PC/Mobile)                                          |
+|                                                                       |
+|   1. Request: http://<ECS IP 地址>/         2. Request: .../api/hello |
++---------------------+-------------------------------+-----------------+
+                      |                               |
+                      v                               v
+            (Internet / Firewall)           (Internet / Firewall)
+                      |                               |
++---------------------+-------------------------------+-----------------+
+|   Alibaba Cloud ECS (Linux Ubuntu)                  |                 |
+|   [ Public IP: 39.107.x.x ]                         |                 |
+|                     |                               |                 |
+|   +-------------------------------------------------+-------------+   |
+|   |  Nginx Web Server (Listening on Port 80)        |             |   |
+|   |  (The "Gatekeeper" & Reverse Proxy)             |             |   |
+|   +------------------------+------------------------+-------------+   |
+|                            |                        |                 |
+|   (Path is /)              |                        | (Path is /api)  |
+|   Matches: location /      |                        | Matches:        |
+|                            |                        | location /api   |
+|   +------------------------v--+                     |                 |
+|   |  File System              |             +-------v-------------+   |
+|   |  /var/www/ecs-learn       |             |  Internal Network   |   |
+|   |  (Static Files)           |   Proxy     |  (Loopback)         |   |
+|   |                           |   Pass      |  127.0.0.1:8000     |   |
+|   |  [index.html]             |  =======>   +-------+-------------+   |
+|   |  [assets/...]             |                     |                 |
+|   |                           |                     v                 |
+|   +---------------------------+           +-----------------------+   |
+|                                           |  Python Process       |   |
+|                                           |  (FastAPI + Uvicorn)  |   |
+|                                           |                       |   |
+|                                           |  [ main.py ]          |   |
+|                                           |  Returns JSON Data    |   |
+|                                           +-----------------------+   |
++-----------------------------------------------------------------------+
 ```
+
