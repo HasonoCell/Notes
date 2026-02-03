@@ -40,6 +40,41 @@ Nginx：高性能 Web 服务器。监听 80 端口，负责接收 HTTP 请求并
 
 用更专业的话来说，一个网络请求需要知道服务器的 IP 地址，才能发送请求到服务器，但是请求不知道应该被服务器中的哪个程序去处理，所以我们要让它去跑在 80 端口上的 Nginx 程序去处理。
 
+如下是一个 Nginx 配置文件的基本骨架，可以了解一下：
+```nginx
+# 全局块
+worker_processes 1;
+
+events {
+    # 甚至不用管这里
+    worker_connections 1024;
+}
+
+http {
+    # --- 核心业务区 ---
+
+    # 包含一些基础设定（MIME类型等）
+    include       mime.types;
+
+    # 每一个 server 就是一个“虚拟主机/网站”
+    server {
+        listen       80;        # 1. 监听哪个端口
+        server_name  localhost; # 2. 叫什么域名
+
+        # 3. 怎么处理请求？（Location 块）
+        location / {
+            root   html;        # 去哪里找文件
+            index  index.html;  # 默认给哪个文件
+        }
+
+        # 4. 碰到 api 怎么办？（反向代理）
+        location /api {
+            proxy_pass http://localhost:3000; # 甩给后端
+        }
+    }
+}
+```
+
 ## 4. Linux 基本知识
 
 ### 文件系统
