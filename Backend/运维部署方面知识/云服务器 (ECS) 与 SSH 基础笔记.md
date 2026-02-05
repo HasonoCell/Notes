@@ -246,3 +246,129 @@ systemctl reload nginx
 +-----------------------------------------------------------------------+
 ```
 
+## 7. 自动化部署 (CI/CD) 与 进程守护 (Systemd)
+
+这次要实现代码提交即上线（自动化），以及服务崩溃自动重启（稳定性）。
+
+---
+
+## 1. CI/CD (持续集成/持续部署)
+
+**本质**：将重复的手工劳动（打包、上传、部署）写成脚本，交给机器人（GitHub Actions）去执行。
+
+### 1.1 核心流程
+
+1. **Trigger (触发)**：当你 `git push` 代码到 main 分支。
+    
+2. **Runner (执行环境)**：GitHub 启动一台临时的 Ubuntu 虚拟机。
+    
+3. **Build (构建)**：在虚拟机里安装 Node.js，执行 `npm run build` 生成制品（dist）。
+    
+4. **Deploy (部署)**：使用 SCP 协议，将 dist 文件夹的内容“搬运”到阿里云 ECS。
+    
+
+### 1.2 关键配置：GitHub Actions
+
+- **配置文件位置**：`.github/workflows/deploy.yml`
+    
+- **Secrets (密钥管理)**：
+    
+    - 绝不能将服务器密码/私钥写在代码里。
+        
+    - **配置位置**：GitHub 仓库 -> Settings -> Secrets -> Actions。
+        
+    - **核心原理**：机器人拿着你给它的“私钥”（`SSH_PRIVATE_KEY`），去开服务器的“锁”（`authorized_keys`）。
+        
+
+### 1.3 SSH 密钥排查 (Troubleshooting)
+
+如果 Actions 报错 `handshake failed`，通常是因为密钥没对上。
+
+- **最佳实践**：不要复用开发者的 Key，而是专门为 CI 机器人生成一对 Key。
+    
+- **生成命令**：`ssh-keygen -t rsa -b 4096 -f ~/.ssh/github_action -N ""`
+    
+- **授权命令**：`cat github_action.pub >> authorized_keys`
+    
+
+---
+
+## 2. Linux 进程守护 (Systemd)
+
+**本质**：将普通的程序（Process）注册为系统服务（Service），由 Linux 内核的 PID 1 (init) 进程直接管理。
+
+### 2.1 为什么要用 Systemd？
+
+- **持久化**：普通的 `python main.py` 会随 SSH 断开而结束。Systemd 让它在后台常驻。
+    
+- **自愈能力**：如果程序崩溃（OOM 或 Bug），Systemd 可以配置 `Restart=always` 自动拉起。
+    
+- **开机自启**：服务器重启后，服务自动复活。
+    
+
+### 2.2 配置文件解剖
+
+位置：`/etc/systemd/system/你的服务名.service`
+
+Ini, TOML
+
+```
+[Unit]
+Description=服务描述
+After=network.target  # 只有连上网了才启动我
+
+[Service]
+User=root             # 以谁的身份运行
+WorkingDirectory=/path/to/project
+# 启动命令 (必须是绝对路径)
+ExecStart=/path/to/venv/bin/python -m uvicorn main:app ...
+# 崩溃自动重启
+Restart=always
+
+[Install]
+WantedBy=multi-user.target # 类似于 Windows 的“正常启动模式”
+```
+
+### 2.3 常用管理命令
+
+|**动作**|**命令**|
+|---|---|
+|**重载配置** (改了.service后必做)|`systemctl daemon-reload`|
+|**开启开机自启**|`systemctl enable <服务名>`|
+|**启动服务**|`systemctl start <服务名>`|
+|**停止服务**|`systemctl stop <服务名>`|
+|**查看状态** (排错神器)|`systemctl status <服务名>`|
+|**查看日志**|`journalctl -u <服务名> -f`|
+
+---
+
+## 3. 现在的架构全貌
+
+你现在的服务器架构已经是一个标准的**现代化单体应用**：
+
+Plaintext
+
+```
+[ 用户浏览器 ]
+      |
+      | (自动请求)
+      v
+[ 阿里云 ECS ]
+-------------------------------------------------------
+|  1. Nginx (Systemd 服务, 80端口)                    |
+|     - 静态资源 -> 指向 /var/www (由 GitHub 自动更新) |
+|     - 动态 API -> 反向代理给 127.0.0.1:8000         |
+|                                                     |
+|  2. Python Backend (Systemd 服务, 8000端口)         |
+|     - 这里的代码目前还需要手动 git pull 更新          |
+|     - 但它拥有了“不死之身”                          |
+-------------------------------------------------------
+```
+
+---
+
+**明天预告**：
+
+目前的痛点是**环境依赖**（Python 版本、虚拟环境、依赖包）还是散落在服务器里的。明天我们将引入 **Docker**，把 Nginx 和 Python 全部装进“集装箱”，实现真正的“一键部署，处处运行”。
+
+好好休息，明天见！
