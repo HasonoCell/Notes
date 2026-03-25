@@ -5,11 +5,12 @@
   "obsidian-local-rest-api",
   "obsidian-paste-image-rename",
   "obsidian-export-image",
-  "obsidian-git",
   "table-editor-obsidian",
   "obsidian-image-toolkit",
   "obsidian-custom-attachment-location",
   "obsidian-style-settings",
   "mermaid-tools",
-  "calendar"
+  "calendar",
+  "obsidian-kanban",
+  "obsidian-git"
 ]

@@ -20,5 +20,6 @@
   "defaultViewMode": "source",
   "rightToLeft": false,
   "useMarkdownLinks": true,
-  "showIndentGuide": false
+  "showIndentGuide": false,
+  "openBehavior": "daily"
 }

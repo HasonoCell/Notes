@@ -279,34 +279,3 @@ const unSubscribe = useStore.subscribe(
 
 unSubscribe(); //取消订阅
 ```
-
-### 结合 Persist 实现状态持久化
-<font style="color:rgb(28, 30, 33);">你可以基于你能想到的任何方式(localStorage/cookie/数据库等)将</font><font style="color:rgb(28, 30, 33);"> </font>`<font style="color:rgb(28, 30, 33);background-color:rgb(246, 247, 248);">store</font>`<font style="color:rgb(28, 30, 33);"> </font><font style="color:rgb(28, 30, 33);">中的</font><font style="color:rgb(28, 30, 33);"> </font>`<font style="color:rgb(28, 30, 33);background-color:rgb(246, 247, 248);">state</font>`<font style="color:rgb(28, 30, 33);"> </font><font style="color:rgb(28, 30, 33);">进行持久化存储。</font>
-
-```typescript
-import { create } from 'zustand'
-
-import { persist, createJSONStorage } from 'zustand/middleware'
-
-export const useCountStore = create(
-  persist(
-    (set, get) => ({
-      count: 0,
-      times: 0,
-      add: () => set({ count: get().count + 1 }),
-    }),
-    {
-      // 唯一仓库名称
-      name: 'count-storage', 
-      // 存储方式 可选 localStorage sessionStorage IndexedDB 默认 localStorage
-      storage: createJSONStorage(() => sessionStorage),
-      partialize: (state) => ({
-        count: state.count,
-      }) // 部分状态持久化
-    }
-  )
-)
-```
-
-
-
