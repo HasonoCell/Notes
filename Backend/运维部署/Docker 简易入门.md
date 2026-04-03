@@ -10,8 +10,6 @@
 
 `docker ps` 查看正在运行的容器 (ps 代表 process status)
 
-`docker ps` 查看所有容器（不管是否在运行）
-
 `docker pull <镜像地址>` 下载镜像
 
 `docker rmi <镜像名称或ID>` 删除镜像

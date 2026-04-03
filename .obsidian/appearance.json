@@ -22,9 +22,9 @@
     "mermaid"
   ],
   "showRibbon": true,
-  "textFontFamily": "Maple Mono NF CN",
-  "interfaceFontFamily": "Maple Mono NF CN",
-  "monospaceFontFamily": "Maple Mono NF CN",
+  "textFontFamily": "Fira Code",
+  "interfaceFontFamily": "Fira Code",
+  "monospaceFontFamily": "Fira Code",
   "baseFontSize": 16,
   "baseFontSizeAction": true
 }
