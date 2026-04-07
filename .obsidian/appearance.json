@@ -25,6 +25,6 @@
   "textFontFamily": "Fira Code",
   "interfaceFontFamily": "Fira Code",
   "monospaceFontFamily": "Fira Code",
-  "baseFontSize": 16,
+  "baseFontSize": 15,
   "baseFontSizeAction": true
 }
