@@ -438,7 +438,7 @@ void find(char *path, char *filename) {
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
-        fprintf(2, "Usage: xargs command [args...]\n");
+        fprintf(2, "usage: xargs <args>\n");
         exit(1);
     }
     char *cmd = argv[1];
