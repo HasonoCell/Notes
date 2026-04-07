@@ -222,6 +222,8 @@ int main(int argc, char *argv[])
 
 这个题目主要是搞清楚管道的方向。p[0] 永远是读端，p[1] 永远是写端，并且一条管道的数据流向永远是“从 p[0] 处读入数据，在将数据写入到 p[1]”。
 
+这里我看到一些博客中的解法是 fork 两次创造两个进程，其实没有必要，fork 一次就可以使用父子两个进程，使其通信即可。
+
 ```c
 #include "kernel/types.h"
 #include "user/user.h"
