@@ -356,7 +356,7 @@ void primes(int old_pipe[2])
 
 ## find
 
-主要是通过 fstat 系统调用获取到文件状态写入到 st，判断文件类型(T_DIR / T_FILE) 再做处理。
+主要是通过 fstat 系统调用获取到文件状态写入到 st，判断文件类型(T_DIR / T_FILE) 再做处理。以及要知道 de 这个结构体，来表示目录结构题。
 
 ```c
 #include "kernel/types.h"
