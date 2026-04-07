@@ -276,9 +276,9 @@ int main(int argc, char *argv[])
 
 ## primes
 
-这个题目主要是要知道 dup 系统调用，可以基于一个 fd 创建出来一个新的 fd，两个 fd 都指向用一个 struct file，共享同一份文件状态。整个思路就是每个进程负责筛掉某一个质数的倍数，然后把剩下的数字通过新的管道传给下一个进程。
+这个题目主要是要知道 dup 系统调用，可以基于一个 fd 创建出来一个新的 fd，两个 fd 都指向用一个 struct file，共享同一份文件状态，最后会返回当前进程里最小的可用文件描述符。整个思路就是每个进程负责筛掉某一个质数的倍数，然后把剩下的数字通过新的管道传给下一个进程。
 
-这个解法牛逼的点在于，
+这个解法牛逼的点在于，通过 dup 复制的 old_pipe 的读端，其指向的那个打开的文件对象，也会被放到
 
 ```c
 #include "kernel/types.h"
@@ -313,7 +313,7 @@ int main(int argc, char *argv[])
 void primes(int old_pipe[2])
 {
     close(0); // 子进程关闭标准输入
-    dup(old_pipe[0]);
+    dup(old_pipe[0]); // 通过 dup
     close(old_pipe[0]);
     close(old_pipe[1]);
 
