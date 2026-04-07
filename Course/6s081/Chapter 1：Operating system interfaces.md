@@ -39,7 +39,7 @@ fork() 之后：
 - ofile[fd] 指向一个 struct file
 - struct file 再指向真实对象，比如 inode（磁盘上的普通文件）、pipe（管道缓冲区）、device（设备，比如终端）
 
-即这样一条数据链路：`fd -> proc中的ofile[] -> struct file -> inode/pipe/device`。**注意**：这里之所以 proc->ofile 不是直接指向的 inode，而是先指向 struct file，是因为 inode 保存的是文件本体，struct file 表示的是“一次打开的结果”。一个进程 open() 一个文件后，需要额外保存很多“打开实例”的信息，比如：
+即这样一条数据链路：`fd -> proc中的ofile[] -> struct file -> inode(file or dir)/pipe/device`。**注意**：这里之所以 proc->ofile 不是直接指向的 inode，而是先指向 struct file，是因为 inode 保存的是文件本体，struct file 表示的是“一次打开的结果”。一个进程 open() 一个文件后，需要额外保存很多“打开实例”的信息，比如：
 
 - 这个 fd 是否可读 readable
 - 是否可写 writable
@@ -380,8 +380,8 @@ int main(int argc, char *argv[]) {
 void find(char *path, char *filename) {
     char buf[512], *p; // buf 为完整路径缓冲区，p 为操作指针
     int fd;
-    struct dirent de;
-    struct stat st;
+    struct dirent de; // “目录项”结构体
+    struct stat st; // 文件状态
 
     if ((fd = open(path, 0)) < 0) {
         fprintf(2, "find: cannot open %s\n", path);
