@@ -273,3 +273,78 @@ int main(int argc, char *argv[])
     }
 }
 ```
+
+## primes
+
+这个题目主要是要知道 dup 系统调用，可以基于一个 fd 创建出来一个新的 fd，两个 fd 都指向用一个 struct file，共享同一份文件状态。整个思路就是每个进程负责筛掉某一个质数的倍数，然后把剩下的数字通过新的管道传给下一个进程。
+
+```c
+#include "kernel/types.h"
+#include "user/user.h"
+
+void primes(int p0[2]) __attribute__((noreturn));
+
+int main(int argc, char *argv[])
+{
+    int p[2];
+    pipe(p);
+
+    int pid = fork();
+    if (pid == 0)
+    {
+        primes(p);
+    }
+    else
+    {
+	    // 父进程关闭读端，不断写数据给子进程
+        close(p[0]);
+        for (int i = 2; i <= 280; i++)
+        {
+            write(p[1], &i, sizeof(i));
+        }
+        close(p[1]);
+        wait(0);
+    }
+    exit(0);
+}
+
+void primes(int old_pipe[2])
+{
+    close(0); // 子进程关闭标准输入
+    dup(old_pipe[0]);
+    close(old_pipe[0]);
+    close(old_pipe[1]);
+
+    int prime;
+    if (read(0, &prime, sizeof(prime)) == 0)
+    {
+        close(0);
+        exit(0);
+    }
+    printf("prime %d\n", prime);
+
+    int new_pipe[2];
+    pipe(new_pipe);
+
+    int pid = fork();
+    if (pid == 0)
+    {
+        primes(new_pipe);
+    }
+    else
+    {
+        close(new_pipe[0]);
+        int num;
+        while (read(0, &num, sizeof(num)))
+        {
+            if (num % prime != 0)
+            {
+                write(new_pipe[1], &num, sizeof(num));
+            }
+        }
+        close(0);
+        close(new_pipe[1]);
+        wait(0);
+    }
+    exit(0);
+}```
