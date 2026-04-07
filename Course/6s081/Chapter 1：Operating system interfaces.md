@@ -1,4 +1,4 @@
-# Chapter 1：Operating system interfaces
+# Knowledge
 
 ## 什么是 Kernel 和 Process？
 
@@ -178,3 +178,44 @@ close(fd);
 - 有些对象甚至没有路径名，但仍然可以通过 fd 操作
 
 所以更准确的说法应该是：Unix 的哲学是“尽可能把不同资源抽象成可以像文件一样操作的对象”。
+
+# Labs
+
+## sleep
+
+判断参数数量，数量正确后 fork 子进程，在子进程中调用 sleep 系统调用
+```c
+#include "kernel/types.h"
+#include "kernel/stat.h"
+#include "user/user.h"
+
+int main(int argc, char *argv[])
+{
+    if (argc != 2)
+    {
+        printf("error: need seconds\n");
+        exit(1);
+    }
+
+    int pid = fork();
+
+    if (pid < 0)
+    {
+        printf("fork failed\n");
+        exit(1);
+    }
+    else if (pid == 0)
+    {
+        int seconds = atoi(argv[1]);
+        sleep(seconds);
+        exit(0);
+    }
+    else
+    {
+        wait(0);
+        exit(0);
+    }
+}
+```
+
+## pingpong
