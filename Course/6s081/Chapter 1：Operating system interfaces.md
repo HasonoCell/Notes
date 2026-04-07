@@ -278,6 +278,8 @@ int main(int argc, char *argv[])
 
 这个题目主要是要知道 dup 系统调用，可以基于一个 fd 创建出来一个新的 fd，两个 fd 都指向用一个 struct file，共享同一份文件状态。整个思路就是每个进程负责筛掉某一个质数的倍数，然后把剩下的数字通过新的管道传给下一个进程。
 
+这个解法牛逼的点在于，
+
 ```c
 #include "kernel/types.h"
 #include "user/user.h"
@@ -347,6 +349,128 @@ void primes(int old_pipe[2])
         close(0);
         close(new_pipe[1]);
         wait(0);
+    }
+    exit(0);
+}
+```
+
+## find
+
+```c
+#include "kernel/types.h"
+#include "kernel/stat.h"
+#include "user/user.h"
+#include "kernel/fs.h"
+
+void find(char *path, char *filename);
+
+int main(int argc, char *argv[]) {
+    if (argc != 3) {
+        fprintf(2, "Usage: find filename with path\n");
+        exit(1);
+    }
+    //递归搜索
+    find(argv[1], argv[2]);
+    exit(0);
+    
+}
+
+void find(char *path, char *filename) {
+    char buf[512], *p;
+    int fd;
+    struct dirent de;
+    struct stat st;
+
+    if ((fd = open(path, 0)) < 0) {
+        fprintf(2, "find: cannot open %s\n", path);
+        return;
+    }
+    if (fstat(fd, &st) < 0) {
+        fprintf(2, "find: cannot stat %s\n", path);
+        close(fd);
+        return;
+    }
+    switch (st.type) {
+        case T_DIR:
+            if (strlen(path) + 1 + DIRSIZ + 1 >= sizeof(buf)) {
+                printf("find: path too long\n");
+                break;
+            }
+            strcpy(buf, path);
+            p = buf + strlen(buf);
+            *p++ = '/';
+            while (read(fd, &de, sizeof(de)) == sizeof(de)) {
+                if (de.inum == 0)
+                    continue;
+                memmove(p, de.name, DIRSIZ);
+                p[DIRSIZ] = 0;
+                if (stat(buf, &st) < 0) {
+                    printf("find: cannot stat %s\n", buf);
+                    continue;
+                }
+                if (st.type == T_FILE && strcmp(de.name, filename) == 0) {
+                    printf("%s\n", buf);
+                }
+                if (st.type == T_DIR && strcmp(de.name, ".") != 0 && strcmp(de.name, "..") != 0) {
+                    find(buf, filename);
+                }
+            }
+            break;
+        default:
+            if (strcmp(path, filename) == 0) {
+                printf("%s\n", path);
+            }
+        }
+    close(fd);
+}
+```
+
+## xargs
+
+```c
+#include "kernel/types.h"
+#include "user/user.h"
+#include "kernel/param.h"
+
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        fprintf(2, "Usage: xargs command [args...]\n");
+        exit(1);
+    }
+    char *cmd = argv[1];
+    char *args[MAXARG];
+    int i, n = 0;
+
+    // 复制参数
+    for (i = 1; i < argc && n < MAXARG - 1; i++) {
+        args[n++] = argv[i];
+    }
+    int end = n;
+    //方便重置索引
+    char buf[512];
+    int m = 0;
+    while (read(0, &buf[m], 1) == 1) {
+        if (buf[m] == '\n') {
+            buf[m] = 0;
+            args[n++] = &buf[0];
+
+            // 参数必须以 NULL 结尾
+            args[n] = 0;
+
+            int fd = fork();
+            if (fd == 0) {
+                exec(cmd, args);
+                fprintf(2, "xargs: exec failed\n");
+                exit(1);
+            }
+            wait(0);
+
+            // 索引重置
+            m = 0;
+            n = end;
+        } else {
+            m++;
+        }
     }
     exit(0);
 }
