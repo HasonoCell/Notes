@@ -356,6 +356,8 @@ void primes(int old_pipe[2])
 
 ## find
 
+主要是通过 fstat 系统调用获取到文件状态写入到 st，判断文件类型(T_DIR / T_FILE) 再做处理。
+
 ```c
 #include "kernel/types.h"
 #include "kernel/stat.h"
@@ -370,13 +372,13 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
     
-    //递归搜索
+    // 递归搜索
     find(argv[1], argv[2]);
     exit(0);
 }
 
 void find(char *path, char *filename) {
-    char buf[512], *p;
+    char buf[512], *p; // buf 为完整路径缓冲区，p 为操作指针
     int fd;
     struct dirent de;
     struct stat st;
@@ -396,9 +398,11 @@ void find(char *path, char *filename) {
                 printf("find: path too long\n");
                 break;
             }
-            strcpy(buf, path);
-            p = buf + strlen(buf);
+            
+            strcpy(buf, path); // 将当前 path 复制到 buf
+            p = buf + strlen(buf); // 移动 p 指针到末尾
             *p++ = '/';
+            
             while (read(fd, &de, sizeof(de)) == sizeof(de)) {
                 if (de.inum == 0)
                     continue;
@@ -417,7 +421,7 @@ void find(char *path, char *filename) {
             }
             break;
         default:
-            if (strcmp(path, filename) == 0) {
+            if (strcmp(de.name, filename) == 0) {
                 printf("%s\n", path);
             }
         }
