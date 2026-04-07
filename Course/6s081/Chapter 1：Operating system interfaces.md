@@ -323,6 +323,8 @@ void primes(int old_pipe[2])
     }
     printf("prime %d\n", prime);
 
+
+	// 开始递归
     int new_pipe[2];
     pipe(new_pipe);
 
@@ -347,4 +349,5 @@ void primes(int old_pipe[2])
         wait(0);
     }
     exit(0);
-}```
+}
+```
