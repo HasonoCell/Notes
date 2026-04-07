@@ -366,13 +366,13 @@ void find(char *path, char *filename);
 
 int main(int argc, char *argv[]) {
     if (argc != 3) {
-        fprintf(2, "Usage: find filename with path\n");
+        fprintf(2, "usage: find <path> <filename>\n");
         exit(1);
     }
+    
     //递归搜索
     find(argv[1], argv[2]);
     exit(0);
-    
 }
 
 void find(char *path, char *filename) {
