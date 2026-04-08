@@ -253,3 +253,11 @@ p->tracemask = 0;
 
 ## sysinfo
 
+这个题目里面，一些前置操作（比如 Makefile，头文件添加函数声明等等）就不说了，来聚焦最核心的两个函数 freemem（用于返回空闲的内存大小）和 nproc（用于返回当前 state 不为 UNUSED 的 proc 数量）
+
+```c
+```
+
+```c
+```
+
