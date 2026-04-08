@@ -182,7 +182,7 @@ user C code
 首先在 Makefile，usys.pl，syscall.h 和 user.h 中添加上 trace system call 的一些定义，这个很简单就不说了：
 
 ```
-entry("trace");	// usys.pl
+entry("trace");	// usys.pl --> 将会直接生成 usys.S 中的汇编码
 
 int trace(int); // user.h
 
@@ -205,6 +205,51 @@ sys_trace(void)
 ```
 
 这里是用到了 argint 这个函数来获取系统调用时的参数，扒了一下这个函数，其实还是使用了 proc->trapframe 中寄存器保存的值。即 system call 中的参数最初都是保存在寄存器中的，argint/argaddr/argstr 都是在 kernel 里从 trapframe 中把这些寄存器参数取出来。
+
+接下来就是如何调用 sys_trace 这个函数了。我们需要现在 struct proc 中添加一个字段 tracemask，用来在后续该 proc 进行 system call 时执行位操作。
+
+```c
+int tracemask; // Trace system call mask
+```
+
+然后在 syscall 函数中：
+
+```c
+void
+syscall(void)
+{
+  int num;
+  struct proc *p = myproc();
+
+  num = p->trapframe->a7;
+  if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
+    p->trapframe->a0 = syscalls[num]();
+
+	// 进行位操作并打印日志
+    if ((p->tracemask >> num) & 1) {
+      printf("%d: syscall %s -> %d\n", p->pid, syscall_str[num], (int)p->trapframe->a0);
+    }
+  } else {
+    printf("%d %s: unknown sys call %d\n",
+            p->pid, p->name, num);
+    p->trapframe->a0 = -1;
+  }
+}
+```
+
+一个很关键的点是，在现有 fork 的实现中，fork 新的进程时，子进程不会自动继承父进程的 tracemask，所以我们还要手动在 fork 函数中赋值，
+
+```c
+np->tracemask = p->tracemask;
+```
+
+同时在释放进程时，也要重置 tracemask，所以 freeproc 函数中：
+
+```c
+p->tracemask = 0;
+```
+
+这样这个题目就完成了～
 
 ## attack
 
