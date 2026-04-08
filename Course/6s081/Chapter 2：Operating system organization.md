@@ -85,3 +85,7 @@
 
 上一个 lab 我们使用现有的一些 system call 添加了一些 utilities，而这个 lab 我们将会自己完成一些 system call。
 
+## getpid
+
+在实现之前，我们不妨来走一遍 getpid() 这个比较简答的 system call 的执行流程，从而对整个数据链路有比较好的认知。
+
