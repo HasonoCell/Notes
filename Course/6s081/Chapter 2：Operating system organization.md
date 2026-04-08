@@ -162,7 +162,7 @@ user C code
 -> C code gets pid
 ```
 
-这里也简单解释一下**寄存器**吧，之前没接触过，一直以为内存是操作速度最快的存储单元里。
+这里也简单解释一下**寄存器**吧，之前没接触过，一直以为内存是操作速度最快的存储单元来着。
 **寄存器**就是 CPU 内部一小组非常快的存储单元，用来保存当前执行最需要的数据。它的作用就是让 CPU 在执行指令时，不必每一步都去慢很多的内存里取东西。CPU 真正跑程序时，会频繁把这些东西放在寄存器里：
 
 - 当前计算的操作数
@@ -204,7 +204,7 @@ sys_trace(void)
 }
 ```
 
-这里是用到了 argint 这个函数来获取系统调用时的参数，扒了一下这个函数，其实还是使用了 proc->trapframe 中寄存器保存的值。即 system call 中的参数最初都是保存在寄存器中的，argint/argaddr/argstr 都是在 kernel 里从 trapframe 中把这些寄存器参数取出来。
+这里是用到了 argint 这个函数来获取系统调用时的参数，扒了一下这个函数，其实还是使用了 proc->trapframe 中寄存器保存的值。即 system call 中的参数最初都是保存在寄存器中的，argint/argaddr/argstr 都是在 kernel 里从 trapframe 中把这些寄存器参数取出来。这里感觉也不难理解，本身一个 system call 都是通过数字标识存放在寄存器中，而在 kernel 里面从 p->trapframe 保存的寄存器里面将数字标识取出来，查表再调用。那么一个 system call 调用所需要的参数也存放在寄存器中，通过 argint 这样的函数来从 trapframe 中取出，也就不难理解了～
 
 接下来就是如何调用 sys_trace 这个函数了。我们需要现在 struct proc 中添加一个字段 tracemask，用来在后续该 proc 进行 system call 时执行位操作。
 
@@ -251,6 +251,5 @@ p->tracemask = 0;
 
 这样这个题目就完成了～
 
-## attack
+## sysinfo
 
-这个题目好难，暂时弃了~~
