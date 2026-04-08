@@ -32,3 +32,4 @@
 
 ### 进程隔离
 
+有关 process 的结构体实现可以看看 kernel/proc.h，重点看看ru xia
