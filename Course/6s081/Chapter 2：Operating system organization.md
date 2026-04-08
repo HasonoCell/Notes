@@ -89,3 +89,89 @@
 
 在实现之前，我们不妨来走一遍 getpid() 这个比较简答的 system call 的执行流程，从而对整个数据链路有比较好的认知。
 
+先看用户代码这一行：
+
+```c
+int pid = getpid();
+```
+
+这不是直接跳到内核里的 sys_getpid()。它先跳到用户态的封装，也就是 user/usys.S 里的 getpid。这里其实有个比较有意思的点，getpid() 这个函数在 C 语言文件中只有头文件里的函数声明而没有具体实现，其真正的用户态实现存在于汇编 stub 里，两者通过链接器进行链接（将 C 语言编译后的代码和汇编代码链接），即：
+
+```asm
+getpid:
+ li a7, SYS_getpid
+ ecall
+ ret
+```
+
+这里发生了三件事：
+
+1. `li a7, SYS_getpid`：把“我要调用哪个 syscall”的编号放进寄存器 a7。编号定义在 kernel/syscall.h。
+2. `ecall`：这条指令触发 trap。CPU 从用户态执行流切进内核处理流程。
+3. `ret`：这行现在还不会执行，要等内核把 syscall 处理完返回用户态后，才会继续执行到这里。
+
+接着看 trap 进入内核后干嘛。用户态的 trap 会进入 kernel/trap.c 的 usertrap()。usertrap() 检查 scause（一个寄存器），如果发现是 8，就知道这是用户态发起的 syscall，于是调用 syscall()
+
+然后进入 kernel/syscall.c 的 syscall()。这里关键是这一句：
+
+```C
+num = p->trapframe->a7;
+```
+
+也就是：从当前进程保存下来的寄存器现场里，取出刚才用户态放进去的 a7。对于 getpid()，这个值就是 SYS_getpid。然后它在 syscall 表里查：
+
+```c
+p->trapframe->a0 = syscalls[num]();
+```
+
+如果 num 是 SYS_getpid，就会调用 kernel/sysproc.c 里的：
+
+```C
+uint64
+sys_getpid(void)
+{
+  return myproc()->pid;
+}
+```
+
+这一步非常简单：直接取当前进程 struct proc 里的 pid 返回。
+
+返回之后，syscall() 会把这个返回值写回 trapframe->a0。这一步很重要，因为 a0 按约定就是函数返回值寄存器。然后内核通过 usertrapret() 走回用户态，最终恢复用户寄存器，执行 sret，回到刚才 ecall 的下一条指令。
+
+这时 CPU 回到了 user/usys.S 的 ret，于是从 getpid() 这个 stub 返回到 C 代码：
+
+```C
+int pid = getpid();
+```
+
+而此时寄存器 a0 里已经是内核写进去的 pid 了，所以 C 代码就拿到了返回值。
+
+```text
+user C code
+-> getpid() stub in usys.S
+-> a7 = SYS_getpid
+-> ecall
+-> usertrap()
+-> syscall()
+-> sys_getpid()
+-> return value written to trapframe->a0
+-> usertrapret()
+-> sret back to user
+-> ret in usys.S
+-> C code gets pid
+```
+
+这里也简单解释一下**寄存器**吧，之前没接触过，一直以为内存是操作速度最快的存储单元里。
+**寄存器**就是 CPU 内部一小组非常快的存储单元，用来保存当前执行最需要的数据。它的作用就是让 CPU 在执行指令时，不必每一步都去慢很多的内存里取东西。CPU 真正跑程序时，会频繁把这些东西放在寄存器里：
+
+- 当前计算的操作数
+- 函数参数
+- 返回值
+- 栈顶位置
+- 下一条要执行的指令位置
+- trap/权限相关状态
+
+所以寄存器的本质作用就是两类：
+
+1. 保存执行现场，例如程序执行到哪、当前栈在哪、函数返回地址在哪
+2. 加速当前计算，例如做加法、传参数、接收返回值
