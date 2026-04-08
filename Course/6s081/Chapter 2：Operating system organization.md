@@ -22,13 +22,23 @@
 
 当进入 kernel 后，CPU 处于 supervisor mode，代码运行在 kernel space，这时 kernel 可以：
 
-- 执行特权指令（比如更改页表和寄存器）
+- 执行特权指令（比如更改页表）
 - 操作页表
 - 开关中断
 - 调度进程
 - 访问内核数据结构
 
 当前 CPU 处于 user mode 还是 supervisor mode，决定了它是否拥有执行特权操作的权限。用户程序运行在 user space 中，不能直接调用内核里的服务实现；当它调用 read() 这类系统调用接口时，user space 处的封装代码会准备好系统调用编号和参数，并执行 ecall 指令。ecall 会触发 trap，使 CPU 从 user mode 切换到 supervisor mode，进入 kernel space 中由内核控制的入口。随后内核识别系统调用编号，分发到对应的内核处理函数（如 sys_read()），完成参数检查、权限检查和实际操作，再将返回值写回约定寄存器，并切回 user mode，回到 user space 中的用户程序继续执行。
+
+这里提到了一个新的概念 **trap**，其含义是：发生了需要 kernel 处理的事件，需要强制停止当前程序的执行，然后 CPU 把控制权转给操作系统预先设置好的处理入口。触发一次 trap 的最小模型可以是：
+
+1. 事件发生（例如用户态 ecall、页错误、定时器中断）
+2. CPU 会保存必要现场（如 sepc、sstatus、scause）
+3. 然后跳到内核设置的入口（stvec）
+4. 由内核判断原因并处理
+5. 最后 sret 返回原流程（或终止当前进程）
+
+可以说，trap 机制提供了一个统一且受控的入口把 CPU 带入内核处理流程。这里 trap 可能会和前面我们提过的 mode 切换产生概念的混淆，我的理解是：mode 切换可以看作是 trap 机制触发的结果，而且如果是 user mode 下触发 trap，必然伴随着 supervisor mode 的切换，而如果本身就处在 supervisor mode 下，触发 trap 也就不会切换 mode 了。
 
 ### 进程隔离
 
