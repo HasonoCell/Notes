@@ -255,9 +255,26 @@ p->tracemask = 0;
 
 这个题目里面，一些前置操作（比如 Makefile，头文件添加函数声明等等）就不说了，来聚焦最核心的两个函数 freemem（用于返回空闲的内存大小）和 nproc（用于返回当前 state 不为 UNUSED 的 proc 数量）
 
+freemem: freemem 函数的实现也挺有意思的，可以让我们初探 xv6 的内存和页表结构。在 xv6 的页分配器里，每个空闲的 4KB 物理页都会被当成一个链表节点，节点结构就是 struct run。这些节点串起来就是 kmem.freelist。kalloc() 从表头拿一页，kfree() 把一页挂回表头。通过遍历 freelist 链表的节点数，我们就可以得到页数 n，从而计算出空闲内存大小。更具体的代码可以去看 kalloc.c 文件。这里还涉及到锁的获取和释放，其实就是为了避免在 freemem 遍历过程中链表结构发生更改。
+
 ```c
+uint64
+freemem(void)
+{
+  struct run *r;
+  uint64 n; // 空闲的页数
+
+  acquire(&kmem.lock);
+  for (r = kmem.freelist; r; r = r->next) {
+    n++;
+  };
+  release(&kmem.lock);
+
+  return n * PGSIZE; // 返回页数x每页的大小，即空闲内存
+}
 ```
 
+nproc:
 ```c
 ```
 
