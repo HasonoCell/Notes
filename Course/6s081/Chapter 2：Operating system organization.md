@@ -49,6 +49,8 @@
 3. 栈（stack）
 4. 堆（heap，malloc 用，可增长）
 
+![](assets/Chapter%202：Operating%20system%20organization/file-20260408111027828.png)
+
 举个例子，有如下两个进程都访问地址 0x4000（**地址本质上是一个十六进制数字，用于定位内存**）：
 
 - 进程 A：VA 0x4000 -> PA 0x12345000
