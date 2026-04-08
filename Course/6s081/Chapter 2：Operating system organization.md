@@ -32,4 +32,15 @@
 
 ### 进程隔离
 
-有关 process 的结构体实现可以看看 kernel/proc.h，重点看看ru xia
+有关 process 的结构体实现可以看看 kernel/proc.h，重点看看如下字段：
+
+- p->pagetable：该进程页表
+- p->kstack：该进程内核栈
+- p->state：运行状态（RUNNABLE/RUNNING/SLEEPING/...）
+- p->ofile：打开的文件列表（chapter 1 中有过提及）
+
+在 xv6 中，process 同时打包了两件事：独立地址空间 + 一条执行线程，从而实现隔离和并发。进程是最小的隔离边界，进程之间 CPU，fd，内存这些资源都是隔离的，其隔离机制的实现主要依赖以下三点：
+
+- user/supervisor mode
+- page table（地址空间隔离）
+- 时间片调度（CPU 共享）
