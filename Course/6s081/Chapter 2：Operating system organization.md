@@ -80,3 +80,8 @@
 - p->kstack：该进程内核栈
 - p->state：运行状态（RUNNABLE/RUNNING/SLEEPING/...）
 - p->ofile：打开的文件列表（chapter 1 中有过提及）
+
+# Lab
+
+上一个 lab 我们使用现有的一些 system call 添加了一些 utilities，而这个 lab 我们将会自己完成一些 system call。
+
