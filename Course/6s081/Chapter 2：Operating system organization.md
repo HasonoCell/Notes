@@ -179,8 +179,33 @@ user C code
 
 ## trace
 
+首先在 Makefile，usys.pl，syscall.h 和 user.h 中添加上 trace system call 的一些定义，这个很简单就不说了：
 
+```
+entry("trace");	// usys.pl
+
+int trace(int); // user.h
+
+$U/_trace\ // makefile
+
+#define SYS_trace 22 // syscall.h
+```
+
+然后我们来补上 kernel 中 sys_trace 的实现：
+
+```c
+uint64
+sys_trace(void)
+{
+  int mask;
+  argint(0, &mask);
+  myproc()->tracemask = mask;
+  return 0;
+}
+```
+
+这里是用到了 argint 这个函数来获取系统调用时的参数，扒了一下这个函数，其实还是使用了 proc->trapframe 中寄存器保存的值。即 system call 中的参数最初都是保存在寄存器中的，argint/argaddr/argstr 都是在 kernel 里从 trapframe 中把这些寄存器参数取出来。
 
 ## attack
 
-这个题目好难，暂时弃了
+这个题目好难，暂时弃了~~
