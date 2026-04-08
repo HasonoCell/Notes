@@ -253,7 +253,7 @@ p->tracemask = 0;
 
 ## sysinfo
 
-这个题目里面，一些前置操作（比如 Makefile，头文件添加函数声明等等）就不说了，来聚焦最核心的两个函数 freemem（用于返回空闲的内存大小）和 nproc（用于返回当前 state 不为 UNUSED 的 proc 数量）
+这个题目的要求其实就是实现一个 syscall，返回当前空闲的内存大小和运行的 proc 数量。一些前置操作（比如 Makefile，头文件添加函数声明等等）就不说了，来聚焦最核心的两个函数 freemem（用于返回空闲的内存大小）和 nproc（用于返回当前 state 不为 UNUSED 的 proc 数量）
 
 freemem: freemem 函数的实现也挺有意思的，可以让我们初探 xv6 的内存和页表结构。在 xv6 的页分配器里，每个空闲的 4KB 物理页都会被当成一个链表节点，节点结构就是 struct run。这些节点串起来就是 kmem.freelist。kalloc() 从表头拿一页，kfree() 把一页挂回表头。通过遍历 freelist 链表的节点数，我们就可以得到页数 n，从而计算出空闲内存大小。更具体的代码可以去看 kalloc.c 文件。这里还涉及到锁的获取和释放，其实就是为了避免在 freemem 遍历过程中链表结构发生更改。
 
@@ -274,7 +274,39 @@ freemem(void)
 }
 ```
 
-nproc:
+nproc: 这里也没什么好说的，遍历 proc 列表就行，注意加锁。
 ```c
+uint64
+nproc(void)
+{
+  struct proc *p;
+  uint64 n = 0;
+
+  for(p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
+    if(p->state != UNUSED)
+      n++;
+    release(&p->lock);
+  }
+  return n;
+}
 ```
 
+最核心的两个函数实现后，我们就可以开始在 sys_sysinfo 里面开始组装了。这里 struct info 已经提前在 xv6 里面定义好了，直接用就行。
+
+```c
+uint64
+sys_sysinfo(void)
+{
+  uint64 addr;
+  struct sysinfo info;
+
+  if(argaddr(0, &addr) < 0)
+    return -1;
+  info.freemem = freemem();
+  info.nproc = nproc();
+  if(copyout(myproc()->pagetable, addr, (char *)&info, sizeof(info)) < 0)
+    return -1;
+  return 0;
+}
+```
