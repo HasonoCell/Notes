@@ -24,6 +24,6 @@ p->trapframe->a0 = syscalls[num]();
 
 ## 页表结构
 
-
+在页表中，虚拟地址到物理地址并不是逐字节映射，而是分块映射。虚拟内存和物理内存通常被 4kb 分为一块，然后记录由 VPN（Virtual Page Number） 到 PPN 的映射。
 
 # Lab
