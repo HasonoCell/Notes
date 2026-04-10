@@ -173,7 +173,7 @@ if(*pte & PTE_V) {
 - 如果它是有效的(PTE_V)
 - 那么这个 PTE 里存放的并不是最终数据页，而是“下一层页表页”的物理地址
 - 然后把这个地址重新类型转换为一个新的 pagetable_t
-- 继续往下一层查
+- 更新当前所遍历到的页表页节点，继续往下一层查
 
 也就是说，在 xv6 的实现里，页表本质上是一棵三级树，而树中的每一个节点，都是一张 4KB 的页表页；每张页表页里又都是 512 个 PTE。
 
@@ -215,33 +215,43 @@ uvmcreate()
 
 这个函数的逻辑是：先创建一个空页表页 pagetable，然后通过 kalloc() 函数分配一页 4KB 的物理内存，将其类型转换为 pagetable_t，用来初始化 pagetable 指针。如果分配出来的内存不够，就把刚刚分到的这一页清零。注意 uvmcreate() 创建出来的，并不是整张完整页表，而只是根页表页。此时这张根页表页里虽然已经有了 512 个 PTE，但它们全都是 0。
 
-接下来，真正让这棵树长起来的，是 walk()。
-
-我们前面已经看过 walk() 中最关键的一段逻辑：
+接下来，真正让这棵树变完整起来的是 walk() 函数。
 
 ```c
-pte_t *pte = &pagetable[PX(level, va)];
-if(*pte & PTE_V) {
-pagetable = (pagetable_t)PTE2PA(*pte);
-} else {
-if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
-  return 0;
-memset(pagetable, 0, PGSIZE);
-*pte = PA2PTE(pagetable) | PTE_V;
+// Return the address of the PTE in page table pagetable
+// that corresponds to virtual address va.  If alloc!=0,
+// create any required page-table pages.
+//
+// The risc-v Sv39 scheme has three levels of page-table
+// pages. A page-table page contains 512 64-bit PTEs.
+// A 64-bit virtual address is split into five fields:
+//   39..63 -- must be zero.
+//   30..38 -- 9 bits of level-2 index.
+//   21..29 -- 9 bits of level-1 index.
+//   12..20 -- 9 bits of level-0 index.
+//    0..11 -- 12 bits of byte offset within the page.
+pte_t *
+walk(pagetable_t pagetable, uint64 va, int alloc)
+{
+  if(va >= MAXVA)
+    panic("walk");
+
+  for(int level = 2; level > 0; level--) {
+    pte_t *pte = &pagetable[PX(level, va)];
+    if(*pte & PTE_V) {
+      pagetable = (pagetable_t)PTE2PA(*pte);
+    } else {
+      if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
+        return 0;
+      memset(pagetable, 0, PGSIZE);
+      *pte = PA2PTE(pagetable) | PTE_V;
+    }
+  }
+  return &pagetable[PX(0, va)];
 }
 ```
 
-这一段代码非常值得细看，因为它正好展示了“页表树是如何按需生长”的。
-
-假设现在 walk() 想要查找某个虚拟地址 va 在第 2 级页表中的入口，也就是：
-
-pte_t *pte = &pagetable[PX(level, va)];
-
-如果这个位置上的 PTE 已经有效，也就是：
-
-if(*pte & PTE_V)
-
-那说明这一级对应的下一层页表页早就存在了，于是就直接跳下去继续查。
+假设现在 walk() 想要查找某个虚拟地址 va 在第 2 级页表中的入口，也就是：`pte_t *pte = &pagetable[PX(level, va)];` 如果这个位置上的 PTE 已经有效，也就是：`if(*pte & PTE_V)` 那说明这一级对应的下一层页表页早就存在了，于是就直接跳下去继续查。
 
 但如果这个 PTE 目前还是空的，就说明这条路径还从来没有被建立过。此时如果 alloc=1，walk() 就会：
 
@@ -250,26 +260,12 @@ if(*pte & PTE_V)
 3. 把它当作新的下一层页表页
 4. 再把它的地址写入当前这个 PTE
 
-也就是：
-
-*pte = PA2PTE(pagetable) | PTE_V;
-
-这一步很重要，因为它表示：
-
-- 当前层的这个 PTE
-- 不再是空槽位
-- 而是正式指向了一个新的下一层页表页
-
-所以你可以把 walk() 看成这样一个函数：
-
-> 它一边在三级页表树里往下寻找目标位置，一边在必要时把缺失的树节点动态创建出来。
+也就是：`*pte = PA2PTE(pagetable) | PTE_V;`
 
 这也是为什么 xv6 的页表实现很节省内存。因为它并不会为所有可能的虚拟地址预先分配整棵三级树，而是只有当某条虚拟地址路径真正被使用到时，才沿着那条路径把所需的页表页补
 出来。
 
-———
-
-不过，walk() 虽然负责把树的路径创建出来，但它本身还没有真正建立“虚拟页 -> 物理页”的映射。真正写入映射的是 mappages()。
+不过，walk() 虽然负责把树的路径创建出来，即只创建出来了虚拟页，但它本身还没有真正建立虚拟页 -> 物理页的映射。真正写入映射的是 mappages()。
 
 看 kernel/vm.c 中的这段代码：
 
