@@ -353,7 +353,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
   for(int level = 2; level > 0; level--) {
     pte_t *pte = &pagetable[PX(level, va)];
     if(*pte & PTE_V) {
-      pagetable = (pagetable_t)PTE2PA(*pte);
+      pagetable = (pagetable_t)PTE2PA(*pte); 
     } else {
       if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
         return 0;
@@ -367,10 +367,11 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
 
 假设现在 walk() 想要查找某个虚拟地址 va 在第 2 级页表中的入口，也就是：`pte_t *pte = &pagetable[PX(level, va)];` 如果这个位置上的 PTE 已经有效，也就是：`if(*pte & PTE_V)` 那说明这一级对应的下一层页表页早就存在了，于是就直接跳下去继续查。
 
-walk() 在发现某一级 PTE 还不存在且 alloc=1 时，会调用 kalloc() 新分配一页物理内存，并把它解释为下一层页表页，再把它的地址写入当前层的 PTE 中。源码里这里写成 `(pde_t*)kalloc()`，但从语义上理解成 `(pagetable_t)kalloc()` 也完全说得通，本质都是“把一页新内存当成下一层页表页来使用”。也就是：`*pte = PA2PTE(pagetable) | PTE_V;`
+宏 PTE2PA 表示从一个 PTE 中去掉 flags，取出 PPN 且左移 12 位，得到真实物理地址。
 
-这也是为什么 xv6 的页表实现很节省内存。因为它并不会为所有可能的虚拟地址预先分配整棵三级树，而是只有当某条虚拟地址路径真正被使用到时，才沿着那条路径把所需的页表页补
-出来。
+walk() 在发现某一级 PTE 还不存在且 alloc=1 时，会调用 kalloc() 新分配一页物理内存，并把它解释为下一层页表页，再把它的地址写入当前层的 PTE 中。源码里这里写成 `(pde_t*)kalloc()`，但从语义上理解成 `(pagetable_t)kalloc()` 也完全说得通，本质都是“把一页新内存当成下一层页表页来使用”。
+
+宏 PA2PTE 表示把一个物理地址 pa，转换成可以写进 PTE 的地址部分。
 
 不过，walk() 虽然负责把树的路径创建出来，即只创建出来了虚拟页，但它本身还没有真正建立虚拟页 -> 物理页的映射。真正写入映射的是 mappages()。
 
