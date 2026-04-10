@@ -361,20 +361,17 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
       *pte = PA2PTE(pagetable) | PTE_V;
     }
   }
+  
   return &pagetable[PX(0, va)];
 }
 ```
 
-假设现在 walk() 想要查找某个虚拟地址 va 在第 2 级页表中的入口，也就是：`pte_t *pte = &pagetable[PX(level, va)];` 如果这个位置上的 PTE 已经有效，也就是：`if(*pte & PTE_V)` 那说明这一级对应的下一层页表页早就存在了，于是就直接跳下去继续查。
+walk() 的作用，就是沿着某个虚拟地址 va 对应的三级页表路径往下找；如果中间哪一级页表页还不存在，并且允许分配，就调用 kalloc() 新建那一级页表页。walk() 不是直接返回物理地址，它返回的是：“这个 va 在最底层对应的那个 PTE 槽位在哪里”，后面的 mappages() 就靠这个返回值，把真正的映射写进去。
 
-宏 PTE2PA 表示从一个 PTE 中去掉 flags，取出 PPN 且左移 12 位，得到真实物理地址。
+假设现在 walk() 想要查找某个虚拟地址 va 在第 2 级页表中的入口，也就是：`pte_t *pte = &pagetable[PX(level, va)];` 如果这个位置上的 PTE 已经有效，也就是：`if(*pte & PTE_V)` 那说明这一级对应的下一层页表页早就存在了，于是拿出下一页页表页的物理地址，将其解释为 pagetable_t，然后继续下一轮循环。
 
-walk() 在发现某一级 PTE 还不存在且 alloc=1 时，会调用 kalloc() 新分配一页物理内存，并把它解释为下一层页表页，再把它的地址写入当前层的 PTE 中。源码里这里写成 `(pde_t*)kalloc()`，但从语义上理解成 `(pagetable_t)kalloc()` 也完全说得通，本质都是“把一页新内存当成下一层页表页来使用”。
-
-宏 PA2PTE 表示把一个物理地址 pa，转换成可以写进 PTE 的地址部分。
-
-不过，walk() 虽然负责把树的路径创建出来，即只创建出来了虚拟页，但它本身还没有真正建立虚拟页 -> 物理页的映射。真正写入映射的是 mappages()。
-
+walk() 在发现某一级 PTE 还不存在且 alloc=1 时，会调用 kalloc() 新分配一页物理内存，并把它解释为下一层页表页，给这一页清零，再把它的地址写入当前层的 PTE 中。源码里这里写成 `(pde_t*)kalloc()`，但从语义上理解成 `(pagetable_t)kalloc()` 也完全说得通，本质都是“把一页新内存当成下一层页表页来使用”。
+  
 看 kernel/vm.c 中的这段代码：
 
 ```c
