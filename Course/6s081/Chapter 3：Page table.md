@@ -291,7 +291,7 @@ kalloc(void)
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
-  return (void*)r;
+  return (void*)r; // 这里返回时解释为 void*，这个物理页表页也就不存在 next 指针了
 }
 ```
 
@@ -352,6 +352,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
 
   for(int level = 2; level > 0; level--) {
     pte_t *pte = &pagetable[PX(level, va)];
+    
     if(*pte & PTE_V) {
       pagetable = (pagetable_t)PTE2PA(*pte); 
     } else {
