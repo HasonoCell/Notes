@@ -248,27 +248,29 @@ panic("kfree");
 
 接下来就是循环 `for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)` 从第一个完整页开始，每次往后跳一页。每次循环执行 kfree(p)，每次传入一页空闲物理页的开头第 1 个字节 p，把这页登记成空闲页，并挂到 kmem.freelist 上。
 
+接下来我们继续看 kfee()
 
-你可以把它脑补成下面这个过程：
+```c
+void
+kfree(void *pa)
+{
+	struct run *r;
 
-假设 end ~ PHYSTOP 之间有 3 页可用：
+	if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
+	  panic("kfree");
 
-- page A
-- page B
-- page C
+	// Fill with junk to catch dangling refs.
+	memset(pa, 1, PGSIZE);
+	r = (struct run*)pa;
+	
+	acquire(&kmem.lock);
+	r->next = kmem.freelist;
+	kmem.freelist = r;
+	release(&kmem.lock);
+}
+```
 
-那么 freerange() 会做：
-
-kfree(pageA);
-kfree(pageB);
-kfree(pageC);
-
-而 kfree() 每次都会把当前页插到链表头，所以最后 freelist 可能变成：
-
-pageC -> pageB -> pageA -> 0
-
-这就完成了初始化。
-
+最有意思的应该是 memset 那两行，首先 kfree 不知道拿到一个 p 里面有没有旧数据，所以在 p 到 p + PGSIZE 的区间内将值全部变为 1，也就是将每一个字节变为 0x01。而 `r = (struct run*)pa;` 非常关键，这里并不是重新创建了一个新的 struct run 对象，而是把这页空闲内存的起始地址重新解释成一个链表节点。由于 struct run 只包含一个 next 指针，因此只需要利用这页开头的一小部分字节，就足以把整页内存挂入 freelist。这体现了 xv6 底层实现中的一个典型特点：同一块物理内存，在不同阶段可以被解释成不同类型的对象；当它空闲时，可以临时被解释为 struct run，从而作为空闲页链表的节点使用。
 #### 页表的创建过程
 
 既然前面已经知道了 xv6 中的页表本质上是一个由多个页表页组成的三级树结构，那么接下来的问题就是：这样一棵树到底是如何被创建出来的？
