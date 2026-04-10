@@ -372,31 +372,48 @@ walk() 的作用，就是沿着某个虚拟地址 va 对应的三级页表路径
 
 walk() 在发现某一级 PTE 还不存在且 alloc=1 时，会调用 kalloc() 新分配一页物理内存，并把它解释为下一层页表页，给这一页清零，再把它的地址写入当前层的 PTE 中。源码里这里写成 `(pde_t*)kalloc()`，但从语义上理解成 `(pagetable_t)kalloc()` 也完全说得通，本质都是“把一页新内存当成下一层页表页来使用”。
 
-我们继续来看 mappage：
-  
-看 kernel/vm.c 中的这段代码：
+我们继续来看 mappage()：
 
 ```c
-if((pte = walk(pagetable, a, 1)) == 0)
-	return -1;
-if(*pte & PTE_V)
-	panic("mappages: remap");
-*pte = PA2PTE(pa) | perm | PTE_V;
+// Create PTEs for virtual addresses starting at va that refer to
+// physical addresses starting at pa. va and size might not
+// be page-aligned. Returns 0 on success, -1 if walk() couldn't
+// allocate a needed page-table page.
+int
+mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
+{
+  uint64 a, last;
+  pte_t *pte;
+
+  if(size == 0)
+    panic("mappages: size");
+  
+  a = PGROUNDDOWN(va);
+  last = PGROUNDDOWN(va + size - 1);
+  for(;;){
+    if((pte = walk(pagetable, a, 1)) == 0)
+      return -1;
+      
+    if(*pte & PTE_V)
+      panic("mappages: remap");
+      
+    *pte = PA2PTE(pa) | perm | PTE_V;
+    
+    if(a == last)
+      break;
+    a += PGSIZE;
+    pa += PGSIZE;
+  }
+  return 0;
+}
 ```
 
-这段逻辑可以翻译成：
+`a = PGROUNDDOWN(va)` 意思是：找到 va 所在虚拟页表页的页起始地址，`last = PGROUNDDOWN(va + size - 1)` 意思是：找到这段 va + size 区间最后一个字节所在虚拟页表页的页起始地址。这样之后就能从 a 开始，一页一页往后映射，直到 last。
 
-1. 先调用 walk(pagetable, a, 1) 去页表树里找到虚拟地址 a 对应的叶子 PTE
-2. 如果中间路径缺失，就顺便创建出来
-3. 一旦找到最底层叶子位置，就把目标物理页地址 pa 和权限位 perm 写进去
+在 for 循环中，每轮循环处理一页的映射关系。`if((pte = walk(pagetable, a, 1)) == 0)` 这一句，从页表树根节点 pagetable 开始 walk，去找到虚拟地址 a 对应的 L0 层的 PTE，如果中间路径不存在，还会顺便构造中间路径。现在我们有了 a 对应的最底层 PTE，如果不是重复映射，那么就执行最关键的一行代码：`*pte = PA2PTE(pa) | perm | PTE_V;` 它做的事就是：
 
-也就是说，mappages() 干的事情，才是真正把某个虚拟页和某个物理页关联起来。
+- 把当前物理页地址 pa 转成 PTE 里地址字段该有的格式
+- 加上权限位 perm
+- 再加上有效位 PTE_V
 
-如果说：
-
-- uvmcreate() 是“创建树根”
-- walk() 是“沿着树路径查找并补齐中间节点”
-
-那么：
-
-- mappages() 就是在树的叶子位置上，真正写下这一页应该映射到哪个物理页
+然后 va 和 pa 各加上 PGSIZE，继续按一页一页的方式去映射。
