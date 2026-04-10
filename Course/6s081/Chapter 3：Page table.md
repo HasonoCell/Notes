@@ -209,7 +209,7 @@ kinit()
 	freerange(end, (void*)PHYSTOP);
 }
 ```
-首先初始化锁，更关键的是 freerange，它的意思是：从 end 开始，到 PHYSTOP（一个宏） 结束，把这整段物理内存都看作“可分配页”，然后交给 freerange() 去处理，其中 end 表示内核镜像在内存中的结束位置，即 0～end 这个区间的物理内存已经被 kernel 代码和数据占用了，要跳过：
+首先初始化锁，更关键的是 freerange，它的意思是：从 end 开始，到 PHYSTOP（一个宏） 结束，把这整段物理内存都看作“可分配页”，然后交给 freerange() 去处理，其中 end 表示内核镜像在内存中的结束位置，即 0～end 这个区间的物理内存已经被 kernel 代码和数据占用了，要跳过，freerange 的任务，就是将这一大段空闲物理内存，拆分成一页一页的结构：
 ```c
 void
 freerange(void *pa_start, void *pa_end)
