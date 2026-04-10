@@ -107,7 +107,7 @@ CPU 是如何在工作中知道该访问哪一张页表的？答案是通过 **s
 1. 页表在 xv6 中到底是如何定义的？
 2. 一张页表是如何被创建出来的？
 3. CPU 运行时到底是如何使用这张页表的？
-4. trap 进出内核时，页表又是如何被切换的？
+4. proc_pagetable 和 exec 函数
 
 ### 页表在 xv6 中如何定义
 
@@ -419,6 +419,182 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 - 最后塞回 pte 的那个槽位回去。
 
 然后 a 和 pa 各加上 PGSIZE，继续按一页一页的方式去映射。
+
 ### CPU 运行时到底是如何使用这张页表的？
 
 前面我们已经知道 xv6 会创建一张用户页表，并把虚拟页到物理页的映射写进这张页表树中。但仅仅“把页表建出来”还不够，CPU 还必须知道：当前到底应该使用哪一张页表来解释虚拟地址。 这件事是通过 satp 寄存器完成的。satp 中保存的是当前页表根页表页的物理地址，因此 CPU 在进行地址翻译时，会从 satp 指向的那张根页表页出发，沿着三级页表一路往下查，最终得到物理页地址和访问权限。
+
+不过这里有个问题：xv6 中页表不止一张，通常每个进程各有自己的用户页表，同时内核自己也有一张内核页表。那么 CPU 到底什么时候该用用户页表，该用哪一张用户页表，什么时候又该用内核页表呢？答
+案就是：在用户态和内核态切换时，xv6 会显式地切换 satp。
+
+我们先看返回用户态之前的代码，也就是 kernel/trap.c 中的 usertrapret()：
+
+```c
+//
+// return to user space
+//
+void
+usertrapret(void)
+{
+  struct proc *p = myproc();
+
+  // we're about to switch the destination of traps from
+  // kerneltrap() to usertrap(), so turn off interrupts until
+  // we're back in user space, where usertrap() is correct.
+  intr_off();
+
+  // send syscalls, interrupts, and exceptions to trampoline.S
+  w_stvec(TRAMPOLINE + (uservec - trampoline));
+
+  // set up trapframe values that uservec will need when
+  // the process next re-enters the kernel.
+  p->trapframe->kernel_satp = r_satp();         // kernel page table
+  p->trapframe->kernel_sp = p->kstack + PGSIZE; // process's kernel stack
+  p->trapframe->kernel_trap = (uint64)usertrap;
+  p->trapframe->kernel_hartid = r_tp();         // hartid for cpuid()
+
+  // set up the registers that trampoline.S's sret will use
+  // to get to user space.
+  
+  // set S Previous Privilege mode to User.
+  unsigned long x = r_sstatus();
+  x &= ~SSTATUS_SPP; // clear SPP to 0 for user mode
+  x |= SSTATUS_SPIE; // enable interrupts in user mode
+  w_sstatus(x);
+
+  // set S Exception Program Counter to the saved user pc.
+  w_sepc(p->trapframe->epc);
+
+  // tell trampoline.S the user page table to switch to.
+  uint64 satp = MAKE_SATP(p->pagetable);
+
+  // jump to trampoline.S at the top of memory, which 
+  // switches to the user page table, restores user registers,
+  // and switches to user mode with sret.
+  uint64 fn = TRAMPOLINE + (userret - trampoline);
+  ((void (*)(uint64,uint64))fn)(TRAPFRAME, satp);
+}
+```
+
+这个函数的作用，可以简单地理解为，为 CPU 返回 user mode 前所做的准备。函数开头初始化的 p，就是触发 trap 的那一个进程。这一大段代码中，和“页表到底怎么被 CPU 使用”最关键的一句是：`uint64 satp = MAKE_SATP(p->pagetable);` 这里的意思是：
+
+- 当前进程的用户根页表页地址是保存在 p->pagetable 中的
+- MAKE_SATP(...) 会把这个页表根地址编码成可以写入 satp 寄存器的格式
+- 最后赋值给 satp 变量，这一步是在为“切换到当前进程的用户页表”做准备
+
+不过要注意，这里虽然已经构造出了新的 satp 值，但还没有真正把它写进硬件寄存器。真正执行 CPU user mode 切换的是 trampoline 汇编代码，也就是 kernel/trampoline.S 中的 userret：
+
+```asm
+userret:
+csrw satp, a1
+sfence.vma zero, zero
+```
+
+这里的 a1 中保存的，就是刚才 usertrapret() 传进来的那个用户页表 satp 值。这两行汇编的含义非常直接：
+
+- csrw satp, a1：把当前进程的用户页表写入 CPU 的 satp
+- sfence.vma zero, zero：刷新地址翻译相关缓存，使新的页表设置立即生效
+
+从这一刻开始，CPU 之后执行用户程序的指令时，就会按照当前进程的那张用户页表来翻译虚拟地址。换句话说，页表真正开始被 CPU 使用，就是从 satp 被切换的那一刻开始的。
+
+接下来，当用户程序真正运行起来以后，它执行的所有 load/store/fetch 指令，看到的仍然都是虚拟地址，而不是物理地址。CPU 的 MMU 会在后台自动做下面这些事：
+
+1. 读取当前 satp，找到根页表页
+2. 把虚拟地址拆成 L2/L1/L0/Offset
+3. 沿着三级页表一路查下去
+4. 找到最底层叶子 PTE
+5. 检查其中的权限位是否合法
+6. 取出 PPN
+7. 再拼上原来的 Offset
+8. 得到最终物理地址
+
+如果这一步失败了，比如：
+
+- 某一级 PTE 不存在
+- PTE 存在但 PTE_V 没设置
+- 权限不满足
+- 用户态访问了没有 PTE_U 的页
+
+那么 CPU 就会触发 page fault，随后进入 trap 处理流程。
+
+不过，当用户态发生 trap 进入内核时，CPU 不能继续使用用户页表来执行内核代码，因为内核需要切回自己的地址空间，使用自己的内核页表。这个切换也是在 trampoline 代码里完成的。看 kernel/
+trampoline.S 里的 uservec：
+
+```asm
+ld t1, 0(a0)
+csrw satp, t1
+sfence.vma zero, zero
+```
+
+这里的 t1 里装的是之前在 usertrapret() 中保存到 trapframe 里的 kernel_satp，也就是内核页表。它的意思就是：
+
+- 用户态一旦发生 trap
+- trampoline 先把用户寄存器保存起来
+- 然后立刻把 satp 切回内核页表
+- 这样后续内核代码就能在自己的地址空间中安全运行
+
+所以，xv6 中 CPU 对页表的使用，并不是“启动后固定用一张表”，而是一个动态切换的过程：
+
+- 当内核准备返回用户态时，会把 satp 切到当前进程的用户页表
+- 当用户态发生 trap 进入内核时，又会把 satp 切回内核页表
+
+也正是因为这种切换机制，xv6 才能同时保证两件事：
+
+1. 用户进程在自己的用户地址空间中运行
+2. 内核在自己的内核地址空间中运行
+
+从整个系统角度看，这条链路其实可以总结成：
+
+- uvmcreate() / walk() / mappages() 负责把页表“建出来”
+- satp 负责告诉 CPU “现在该用哪张页表”
+- usertrapret() 和 trampoline.S 负责在用户态和内核态切换时更新 satp
+- MMU 则在运行时按照当前 satp 指向的页表，自动完成地址翻译
+
+所以一句话概括就是：在 xv6 中，页表建好之后并不会自动生效，真正决定 CPU 当前使用哪张页表的是 satp；内核在用户态和内核态切换时，会显式修改 satp，从而让 CPU 在不同地址空间之间来回切换。
+
+### proc_pagetable
+
+```c
+
+// Create a user page table for a given process,
+// with no user memory, but with trampoline pages.
+pagetable_t
+proc_pagetable(struct proc *p)
+{
+  pagetable_t pagetable;
+
+  // An empty page table.
+  pagetable = uvmcreate();
+  if(pagetable == 0)
+    return 0;
+
+  // map the trampoline code (for system call return)
+  // at the highest user virtual address.
+  // only the supervisor uses it, on the way
+  // to/from user space, so not PTE_U.
+  if(mappages(pagetable, TRAMPOLINE, PGSIZE,
+              (uint64)trampoline, PTE_R | PTE_X) < 0){
+    uvmfree(pagetable, 0);
+    return 0;
+  }
+
+  // map the trapframe just below TRAMPOLINE, for trampoline.S.
+  if(mappages(pagetable, TRAPFRAME, PGSIZE,
+              (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
+    uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+    uvmfree(pagetable, 0);
+    return 0;
+  }
+
+  return pagetable;
+}
+```
+
+这个函数的作用非常简单，接受一个进程 p 作为参数，为它创造一个属于它的页表。首先定义了 pagatable 作为根页表页，随后调用 uvmcreate，即：
+
+- 调 kalloc()
+- 分配一页新的物理页
+- 清零
+- 把它当成根页表页返回
+
+随后调用 mappages 开始映射
