@@ -186,21 +186,26 @@ if(*pte & PTE_V) {
 我们先来对整个文件有个大体的认知。kalloc.c 的核心思想非常简单：用一个空闲链表 freelist 管理所有可用物理页。最主要的其实就是通过 kmem 结构体中的 freelist 链表来把每一个空闲物理页表页作为一个个节点来管理。kinit 用来初始化锁和调用 freerange 函数，freerange() 会把一段可用物理内存范围，按页切开，然后一页一页地调用 kfree()。最后把这些页全挂进 freelist。现在我们来看一些具体代码
 
 首先是一个关键的结构体 run：
+
 ```c
 struct run {
 	struct run *next;
 };
 ```
+
 struct run 是空闲物理页在 kalloc.c 中的链表节点表示。xv6 并不会额外为 freelist 创建专门的节点，而是直接把一页空闲物理页本身的开头解释成一个 struct run，并用其中的 next 指针把多个空闲页串起来。而接下来的结构体 kmem:
+
 ```c
 struct {
 	struct spinlock lock;
 	struct run *freelist;
 } kmem;  
 ```
+
 这个 kmem 就是整个物理页分配器的全局状态。freelist 是一个 struct run * ，也就是说它指向链表中的第一个空闲页。后面的每个空闲页再通过 run->next 串起来。
 
 再看 kinit：
+
 ```c
 void
 kinit()
@@ -209,7 +214,10 @@ kinit()
 	freerange(end, (void*)PHYSTOP);
 }
 ```
-首先初始化锁，更关键的是 freerange，它的意思是：从 end 开始，到 PHYSTOP（一个宏） 结束，把这整段物理内存都看作“可分配页”，然后交给 freerange() 去处理，其中 end 表示内核镜像在内存中的结束位置，即 0～end 这个区间的物理内存已经被 kernel 代码和数据占用了，要跳过，freerange 的任务，就是将这一大段空闲物理内存，拆分成一页一页的结构：
+
+首先初始化锁，更关键的是 freerange，它的意思是：从 end 开始，到 PHYSTOP（一个宏） 结束，把这整段物理内存都看作“可分配页”，然后交给 freerange() 去处理，其中 end 表示内核镜像在内存中的结束位置，即 0～end 这个区间的物理内存已经被 kernel 代码和数据占用了，要跳过，
+freerange 的任务，就是将这一大段空闲物理内存，拆分成一页一页的结构：
+
 ```c
 void
 freerange(void *pa_start, void *pa_end)
@@ -221,6 +229,45 @@ freerange(void *pa_start, void *pa_end)
 }
 ```
 
+
+首先定义了一个 char 类型的指针 p，用来在整段物理内存里往前走。为什么用 char * 呢？主要是因为在 C 语言中 char * 做指针加法时，是按 1 字节递增的。后面写 p += PGSIZE，就很自然地表示“往后跳 4096 字节”，也就是跳到下一页。这里其实也可以发现一个很有趣的点就是，xv6 里面很多时候声明变量都不太在乎其类型的意义，只是想要更精细的字节控制，比如前面 `typedef pte uint64`，不是说真的需要 pte 是个数字，只是想要一个 64 位 8 字节的容器可以存放 PPN 和 flags，而这里 freerange 中的 p 也是，不是说真的需要 p 是一个字符，而只是想要“1 字节”这种细粒度的内存长度控制。
+
+接着第二行：`p = (char*)PGROUNDUP((uint64)pa_start);` 它的作用是把起始地址 pa_start 向上对齐到最近的页边界。比如假设：
+
+- PGSIZE = 4096
+- pa_start = 5000
+
+所以空闲页的拆分状况应该是：0～4095，4096～8191，8192～后续空闲内存，那 5000 就落在第二个页中间，不是页开头。页分配器不能把半页塞进 freelist，只能管理完整页。所以 PGROUNDUP(5000) 会变成下一个页边界 8192。后续 kfree() 也只接受页对齐的地址：
+
+```c
+if(((uint64)pa % PGSIZE) != 0 || ...)
+panic("kfree");
+```
+
+如果地址不是页边界，直接 panic。
+
+接下来就是循环 `for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)` 从第一个完整页开始，每次往后跳一页。每次循环执行 kfree(p)，每次传入一页空闲物理页的开头第 1 个字节 p，把这页登记成空闲页，并挂到 kmem.freelist 上。
+
+
+你可以把它脑补成下面这个过程：
+
+假设 end ~ PHYSTOP 之间有 3 页可用：
+
+- page A
+- page B
+- page C
+
+那么 freerange() 会做：
+
+kfree(pageA);
+kfree(pageB);
+kfree(pageC);
+
+而 kfree() 每次都会把当前页插到链表头，所以最后 freelist 可能变成：
+
+pageC -> pageB -> pageA -> 0
+
+这就完成了初始化。
 
 #### 页表的创建过程
 
