@@ -578,81 +578,43 @@ proc_pagetable(struct proc *p)
 }
 ```
 
-这个函数的作用非常简单：接受一个进程 p 作为参数，创建一个属于它的页表。但要想讲清楚这个函数，我觉得必须先把 trampoline 和 trapframe 两个概念搞清楚，不然根本看不懂两个 mappages 在干嘛。
+这个函数的作用非常简单：接受一个进程 p 作为参数，创建一个属于它的用户页表。但要想讲清楚这个函数，我觉得必须先把 trampoline 和 trapframe 两个概念搞清楚，不然根本看不懂两个 mappages 在干嘛。
 
-#### trampoline 到底是什么
+**trampoline**：trampoline 前面说过了，就是 kernel/trampoline.S 这段汇编代码本身，专门用来处理用户态和内核态切换时的有关工作。这段汇编代码经过：汇编 -> 链接 -> 装载 之后，会变成一串机器指令，被放进**内存中的某个物理页里**
 
-trampoline 就是 kernel/trampoline.S 这段汇编代码本身。这段代码专门干两件事：
-
-- 用户态发生 trap 时，先保存用户寄存器，再切到内核页表，跳进 usertrap()
-- 内核处理完后，再切回用户页表，恢复用户寄存器，执行 sret 回用户态
-
-这段汇编代码经过：汇编 -> 链接 -> 装载 之后，会变成一串机器指令，被放进**内存中的某个物理页里**
-
-#### trapframe 到底是什么
-
-trapframe 是一个结构体，它是一页专门留出来的内存，里面存的是：
-
-- 用户寄存器的值（如何存到 trapframe 的？那就是 trampoline 做到的）
-- 返回用户态时要恢复的状态
-- 再次进入内核时要用到的信息
+**trapframe**：trapframe 是一个结构体，它是一页专门留出来的内存，里面存的是用户寄存器的值，返回用户态时要恢复的状态，以及再次进入内核时要用到的信息
 
 
-#### 为什么这两个东西都要出现在用户页表里
+所以，这个函数的意思是：**对于创建出来的进程 p，为它创建一个用户页表。通过两个 mappages，先将 TRAMPOLINE 这个虚拟地址映射到 trampoline 这段汇编代码实际存储的物理地址上，再将 TRAPFRAME 这个虚拟地址映射到 p->trapframe 这个结构体的物理地址上。前者是切换代码，后者是保存切换时的寄存器现场。**
 
-假设用户程序正在运行，这时候 CPU 用的是该进程的用户页表。如果突然发生 trap，CPU 要先执行一小段切换代码，这段代码的任务是，先保存寄存器到 trapframe，然后再切页表、跳进内核。那么问题来了：在 trap 刚发生的那一瞬间，CPU 还在用用户页表。那就意味着：
+我们来模拟一次 trap 发生的全过程：
 
-- 这段切换代码，必须能在用户页表里找到
-- 那个保存寄存器的 trapframe，也必须能在用户页表里找到
+**发生前**，CPU 用这个进程的用户页表，用户页表里已经有：
+- TRAMPOLINE -> trampoline 代码页
+- TRAPFRAME -> 这个进程自己的 trapframe 页
 
-否则 trap 一发生，CPU 连第一步该执行什么、该把寄存器存去哪都做不了。所以每个进程的用户页表里，必须提前准备好：
-
-- 一页 TRAMPOLINE：让 CPU 有代码可执行
-- 一页 TRAPFRAME：让 CPU 有地方可存寄存器
-
-这就是 proc_pagetable() 那两个 mappages() 的根本原因。
-
-#### mappgages
-
-现在回头看那两句 mappages()
+**刚发生**：CPU 跳到 TRAMPOLINE 对应的代码开始执行，这段代码把用户寄存器保存到 TRAPFRAME，再切到内核页表，再跳进 usertrap()。usertrap() 里面有段代码你肯定会非常熟悉～：
 
 ```c
-// 第一个
-mappages(pagetable, TRAMPOLINE, PGSIZE,
-	   (uint64)trampoline, PTE_R | PTE_X)
+if(r_scause() == 8){
+    // system call
+
+    if(p->killed)
+      exit(-1);
+
+    // sepc points to the ecall instruction,
+    // but we want to return to the next instruction.
+    p->trapframe->epc += 4;
+
+    // an interrupt will change sstatus &c registers,
+    // so don't enable until done with those registers.
+    intr_on();
+
+    syscall();
+  }
 ```
 
-它的意思是：在这个进程的用户页表里，找一个固定虚拟地址 TRAMPOLINE（提前定义好的宏），让它指向那段 trampoline 汇编代码所在的物理页，权限给读和执行。最终就让这个进程通过虚拟地址 TRAMPOLINE，能看到那一页代码。
+这就是说，如果 trap 发生的原因是因为需要调用系统调用，那么就调用 syscall，这就是我们前面两章讲过的知识了。
 
-```c
-// 第二个
-mappages(pagetable, TRAPFRAME, PGSIZE,
-	   (uint64)(p->trapframe), PTE_R | PTE_W)
-```
-
-它的意思是：在这个进程的用户页表里，找一个固定虚拟地址 TRAPFRAME，让它指向当前进程自己的 trapframe 那一页物理内存，权限给读和写。这样 trampoline 代码在 trap 发生时，就能直接把寄存器写到 TRAPFRAME 这页里。
-
-两个函数的作用总结一下就是：物理内存里本来就有一页 trampoline 代码，mappages() 做的是让虚拟地址 TRAMPOLINE 指到它。同理，p->trapframe 本来就是一页物理内存，mappages() 做的是让虚拟地址 TRAPFRAME 指到它。
-
-我们来看一个具体的流程：假设某个进程正在用户态运行。
-
-trap 发生前：
-
-- CPU 用这个进程的用户页表
-- 用户页表里已经有：
-  - TRAMPOLINE -> trampoline 代码页
-  - TRAPFRAME -> 这个进程自己的 trapframe 页
-
-trap 刚发生：
-
-- CPU 跳到 TRAMPOLINE 对应的代码开始执行
-- 这段代码把用户寄存器保存到 TRAPFRAME
-- 再切到内核页表
-- 再跳进 usertrap()
-
-返回用户态时：
-
-- 内核再跳回 trampoline 的 userret
-- 切回用户页表
-- 从 TRAPFRAME 恢复寄存器
-- sret 回到用户态
+**返回用户态时**：内核再跳回 trampoline 的 userret，切回用户页表，从 TRAPFRAME 恢复寄存器
+，再 sret 回到用户态
