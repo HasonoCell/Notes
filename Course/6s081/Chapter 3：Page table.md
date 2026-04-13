@@ -782,7 +782,7 @@ if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
 sz = sz1;
 ```
 
-根据当前这个段最终要占据的虚拟地址范围（sz 到 ph.vaddr + ph.memsz），调用 uvmalloc，在新页表内将这段用户空间创建出来，并更新原来的 p->sz。**注意：uvmalloc 只是分配了该程序段所需要的内存的物理页（因为程序文件本身是存储在磁盘中的，需要将其加载到内存中才能执行），并且在新页表中建立了映射**。下面是 uvmalloc 函数的具体实现：
+根据当前这个段最终要占据的虚拟地址范围（sz 到 ph.vaddr + ph.memsz），调用 uvmalloc，在新页表内将这段用户空间创建出来，并更新原来的 p->sz。**注意：uvmalloc 只是分配了该程序段所需要的内存的物理页（因为程序文件本身是存储在磁盘中的，需要将其加载到内存中才能执行），并且在新页表中建立了映射，但是在用户页表中还没有任何实际的内容**。下面是 uvmalloc 函数的具体实现：
 ```c
 // Allocate PTEs and physical memory to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
@@ -812,3 +812,5 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
   return newsz;
 }
 ```
+
+而 `loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz)` 这一行代码通过 loadseg 函数，才将chen
