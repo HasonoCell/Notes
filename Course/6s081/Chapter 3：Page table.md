@@ -773,3 +773,42 @@ exec(char *path, char **argv)
 接着创建用户页表，这里用到了我们之前讲过的 proc_pagetable 函数。此时这张页表里面只有 TRAMPOLINE 和 TRAPFRAME，**还没有程序代码，数据和栈**。
 
 接着开始 for 遍历 ELF 的各个程序段，开始循环读取 program header，最终只会把可加载的程序段装载到内存中。
+
+接下来这段代码是第一个关键点：
+```c
+uint64 sz1;
+if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
+	goto bad;
+sz = sz1;
+```
+
+根据当前这个段最终要占据的虚拟地址范围（sz 到 ph.vaddr + ph.memsz），调用 uvmalloc，在新页表内将这段用户空间创建出来，并更新原来的 p->sz。下面是 uvmalloc 函数的具体实现：
+```c
+// Allocate PTEs and physical memory to grow process from oldsz to
+// newsz, which need not be page aligned.  Returns new size or 0 on error.
+uint64
+uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
+{
+  char *mem;
+  uint64 a;
+
+  if(newsz < oldsz)
+    return oldsz;
+
+  oldsz = PGROUNDUP(oldsz);
+  for(a = oldsz; a < newsz; a += PGSIZE){
+    mem = kalloc();
+    if(mem == 0){
+      uvmdealloc(pagetable, a, oldsz);
+      return 0;
+    }
+    memset(mem, 0, PGSIZE);
+    if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+      kfree(mem);
+      uvmdealloc(pagetable, a, oldsz);
+      return 0;
+    }
+  }
+  return newsz;
+}
+```
