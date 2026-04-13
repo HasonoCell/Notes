@@ -842,5 +842,6 @@ loadseg(pagetable_t pagetable, uint64 va, struct inode *ip, uint offset, uint sz
 }
 ```
 
-从 for 循环出来以后，代表程序文件，即 ELF 文件已经加载完成了，那么关闭 inode。随后，开始准备处理**用户栈**。原来的大小 sz 被记录为 oldsz，然后继续通过 uvmalloc 函数分配**两张虚拟页**给用户栈和 guard page。为什么需要 guard page？就是为了**预防
+从 for 循环出来以后，代表程序文件，即 ELF 文件已经加载完成了，那么关闭 inode。随后，开始准备处理**用户栈**。原来的大小 sz 被记录为 oldsz，然后继续通过 uvmalloc 函数分配**两张虚拟页**给用户栈和 guard page。为什么需要 guard page？就是为了**预防用户栈溢出后进程访问到不该访问的内存空间让整个系统崩溃，所以出现 guard page 兜底**。
 
+然后又是通过一段 for 循环，将参数字符串压入栈中，然后记住每个参数字符串放在用户栈里的地址，存到 ustack[]。
