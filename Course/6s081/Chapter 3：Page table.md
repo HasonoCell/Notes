@@ -623,7 +623,7 @@ if(r_scause() == 8){
 
 exec 用来在一个进程中运行另一个程序时被使用。exec 不创建新进程，它是把“当前进程”的用户地址空间整个换成一个新程序。进程始终是那个进程，pid 不变，但是该进程在用户空间中的代码，数据，栈，入口地址全部变了。
 
-常见的使用场景就是 shell 执行命令。shell 先 fork 复制出一个子进程，子进程再 exec("ls", argv) 或 exec("echo", argv)，把自己原来的用户地址空间整个换掉，变成 ls 或 echo，从而实现在一个进程中运行其它的程序，同时也可以使用那个程序的用户页表。
+常见的使用场景就是 shell 执行命令。shell 先 fork 复制出一个子进程，子进程再 exec("ls", argv) 或 exec("echo", argv)，把自己原来的用户地址空间整个换掉，变成 ls 或 echo，从而实现在一个进程中运行其它的程序，同时也会为这个新程序构造并使用新的用户地址空间。
 
 对一个进程来说，它的用户页表通常会描述这些内容：
 
@@ -782,7 +782,7 @@ if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
 sz = sz1;
 ```
 
-根据当前这个段最终要占据的虚拟地址范围（从 sz 扩展到 ph.vaddr + ph.memsz），调用 uvmalloc，在新页表内将这段用户空间创建出来，并更新原来的 sz。**注意：uvmalloc 只是分配了该程序段所需要的内存的物理页（因为程序文件本身是存储在磁盘中的，需要将其加载到内存中才能执行），并且在新页表中建立了映射，但是在用户页表中还没有任何实际的内容**。下面是 uvmalloc 函数的具体实现：
+根据当前这个段最终要占据的虚拟地址范围（从 sz 扩展到 ph.vaddr + ph.memsz），调用 uvmalloc，在新页表中为这段虚拟地址范围分配物理页并建立映射，并更新原来的 sz。**注意：uvmalloc 只是分配了该程序段所需要的内存的物理页（因为程序文件本身是存储在磁盘中的，需要将其加载到内存中才能执行），并且在新页表中建立了映射，但是在用户页表中还没有任何实际的内容**。下面是 uvmalloc 函数的具体实现：
 ```c
 // Allocate PTEs and physical memory to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
@@ -813,7 +813,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 }
 ```
 
-而 `loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz)` 这一行代码通过 loadseg 函数，才将程序段真正拷贝到用户页表中去。loadseg 函数是这样的：
+而 `loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz)` 这一行代码通过 loadseg 函数，才将程序段真正拷贝到用户页表所映射的物理页中去。loadseg 函数是这样的：
 
 ```c
 // Load a program segment into pagetable at virtual address va.
@@ -842,11 +842,11 @@ loadseg(pagetable_t pagetable, uint64 va, struct inode *ip, uint offset, uint sz
 }
 ```
 
-从 for 循环出来以后，代表程序文件，即 ELF 文件已经加载完成了，那么关闭 inode。随后，开始准备处理**用户栈**。原来的大小 sz 被记录为 oldsz，然后继续通过 uvmalloc 函数分配**两张虚拟页**给用户栈和 guard page。为什么需要 guard page？就是为了**预防用户栈溢出后进程访问到不该访问的内存空间让整个系统崩溃，所以出现 guard page 兜底**。
+从 for 循环出来以后，代表程序文件，即 ELF 文件已经加载完成了，那么关闭 inode。随后，开始准备处理**用户栈**。通过 uvmalloc 函数分配**两张虚拟页**给用户栈和 guard page。为什么需要 guard page？就是为了**预防用户栈溢出后进程访问到不该访问的内存空间让整个系统崩溃，所以出现 guard page 兜底**。
 
 然后又是通过一段 for 循环，将参数字符串压入栈中，然后记住每个参数字符串放在用户栈里的地址，存到 ustack[]，相当于 ustack 数组中每一项都是指向参数字符串的一个指针，随后将 ustack 本身也拷贝进栈中。
 
-最后将栈顶指针 sp 的值保存进 p->trapframe->a1 中，保存程序名给 p->name，然后将旧页表替换为新页表，整个函数结束。
+最后将参数字符串的指针数组 argv 的值保存进 p->trapframe->a1 中，保存程序名给 p->name，然后将旧页表替换为新页表，整个函数结束。
 
 
 exec() 在 kernel/exec.c 里做的事情非常明确：先打开 ELF 文件并校验，然后调用 proc_pagetable() 创建一张新的用户页表骨架；接着通过 uvmalloc() 和 loadseg() 把 ELF 的各个可加载段装进这张新页表；再额外分配两页作为 guard page 和用户栈，并用 copyout() 把 argv 参数压入新栈；最后把当前进程的 p->pagetable、trapframe->epc 和 trapframe->sp 替换成新的内容，使该进程下次返回用户态时从新程序入口开始执行。
