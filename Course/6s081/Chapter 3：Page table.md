@@ -476,7 +476,7 @@ usertrapret(void)
 }
 ```
 
-这个函数的作用，可以简单地理解为，为 CPU 返回 user mode 前所做的准备。函数开头初始化的 p，就是触发 trap 的那一个进程。这一大段代码中，和“页表到底怎么被 CPU 使用”最关键的一句是：`uint64 satp = MAKE_SATP(p->pagetable);` 这里的意思是：
+usertrapret() 的一个核心作用，就是为“下次该进程再 trap 进内核”提前准备现场信息；其中 kernel_satp 等字段被写入 p->trapframe，供 trampoline 在 trap 刚发生时先切回内核页表并进入内核使用。函数开头初始化的 p，就是触发 trap 的那一个进程。这一大段代码中，和“页表到底怎么被 CPU 使用”最关键的一句是：`uint64 satp = MAKE_SATP(p->pagetable);` 这里的意思是：
 
 - 当前进程的用户根页表页地址是保存在 p->pagetable 中的
 - MAKE_SATP(...) 会把这个页表根地址编码成可以写入 satp 寄存器的格式
@@ -490,12 +490,7 @@ csrw satp, a1
 sfence.vma zero, zero
 ```
 
-这里的 a1 中保存的，就是刚才 usertrapret() 传进来的那个用户页表 satp 值。这两行汇编的含义非常直接：
-
-- csrw satp, a1：把当前进程的用户页表写入 CPU 的 satp
-- sfence.vma zero, zero：刷新地址翻译相关缓存，使新的页表设置立即生效
-
-从这一刻开始，CPU 之后执行用户程序的指令时，就会按照当前进程的那张用户页表来翻译虚拟地址。换句话说，页表真正开始被 CPU 使用，就是从 satp 被切换的那一刻开始的。
+这里的 a1 中保存的，就是刚才 usertrapret() 传进来的那个用户页表 satp 值。从这一刻开始，CPU 之后执行用户程序的指令时，就会按照当前进程的那张用户页表来翻译虚拟地址。换句话说，页表真正开始被 CPU 使用，就是从 satp 被切换的那一刻开始的。
 
 接下来，当用户程序真正运行起来以后，它执行的所有 load/store/fetch 指令，看到的仍然都是虚拟地址，而不是物理地址。CPU 的 MMU 会在后台自动做下面这些事：
 
@@ -515,9 +510,7 @@ sfence.vma zero, zero
 - 权限不满足
 - 用户态访问了没有 PTE_U 的页
 
-那么 CPU 就会触发 page fault，随后进入 trap 处理流程。
-
-不过，当用户态发生 trap 进入内核时，CPU 不能继续使用用户页表来执行内核代码，因为内核需要切回自己的地址空间，使用自己的内核页表。这个切换也是在 trampoline 代码里完成的。看 kernel/
+那么 CPU 就会触发 page fault，随后进入 trap 处理流程。不过，当用户态发生 trap 进入内核时，CPU 不能继续使用用户页表来执行内核代码，因为内核需要切回自己的地址空间，使用自己的内核页表。这个切换也是在 trampoline 代码里完成的。看 kernel/
 trampoline.S 里的 uservec：
 
 ```asm
@@ -526,12 +519,7 @@ csrw satp, t1
 sfence.vma zero, zero
 ```
 
-这里的 t1 里装的是之前在 usertrapret() 中保存到 trapframe 里的 kernel_satp，也就是内核页表。它的意思就是：
-
-- 用户态一旦发生 trap
-- trampoline 先把用户寄存器保存起来
-- 然后立刻把 satp 切回内核页表
-- 这样后续内核代码就能在自己的地址空间中安全运行
+这里的 t1 里装的是之前在 usertrapret() 中保存到 trapframe 里的 kernel_satp，也就是内核页表。也就是说整个流程的意思是：trap 刚发生时，CPU 还在使用用户页表，这时 trampoline 代码会先通过固定映射的 TRAPFRAME 找到这页 trapframe，从里面取出 kernel_satp，然后切回内核页表，后面才真正进入 usertrap() 这类内核 C 代码。
 
 所以，xv6 中 CPU 对页表的使用，并不是“启动后固定用一张表”，而是一个动态切换的过程：
 
@@ -547,7 +535,7 @@ sfence.vma zero, zero
 
 - uvmcreate() / walk() / mappages() 负责把页表“建出来”
 - satp 负责告诉 CPU “现在该用哪张页表”
-- usertrapret() 和 trampoline.S 负责在用户态和内核态切换时更新 satp
+- usertrapret() 和 trampoline.S 负责在用户态和内核态切换时更新 satp 等等状态
 - MMU 则在运行时按照当前 satp 指向的页表，自动完成地址翻译
 
 所以一句话概括就是：在 xv6 中，页表建好之后并不会自动生效，真正决定 CPU 当前使用哪张页表的是 satp；内核在用户态和内核态切换时，会显式修改 satp，从而让 CPU 在不同地址空间之间来回切换。
