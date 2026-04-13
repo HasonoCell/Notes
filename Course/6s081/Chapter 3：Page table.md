@@ -844,4 +844,9 @@ loadseg(pagetable_t pagetable, uint64 va, struct inode *ip, uint offset, uint sz
 
 从 for 循环出来以后，代表程序文件，即 ELF 文件已经加载完成了，那么关闭 inode。随后，开始准备处理**用户栈**。原来的大小 sz 被记录为 oldsz，然后继续通过 uvmalloc 函数分配**两张虚拟页**给用户栈和 guard page。为什么需要 guard page？就是为了**预防用户栈溢出后进程访问到不该访问的内存空间让整个系统崩溃，所以出现 guard page 兜底**。
 
-然后又是通过一段 for 循环，将参数字符串压入栈中，然后记住每个参数字符串放在用户栈里的地址，存到 ustack[]。
+然后又是通过一段 for 循环，将参数字符串压入栈中，然后记住每个参数字符串放在用户栈里的地址，存到 ustack[]，相当于 ustack 数组中每一项都是指向参数字符串的一个指针，随后将 ustack 本身也拷贝进栈中。
+
+最后将栈顶指针 sp 的值保存进 p->trapframe->a1 中，保存程序名给 p->name，然后将旧页表替换为新页表，整个函数结束。
+
+
+exec() 在 kernel/exec.c 里做的事情非常明确：先打开 ELF 文件并校验，然后调用 proc_pagetable() 创建一张新的用户页表骨架；接着通过 uvmalloc() 和 loadseg() 把 ELF 的各个可加载段装进这张新页表；再额外分配两页作为 guard page 和用户栈，并用 copyout() 把 argv 参数压入新栈；最后把当前进程的 p->pagetable、trapframe->epc 和 trapframe->sp 替换成新的内容，使该进程下次返回用户态时从新程序入口开始执行。
