@@ -782,7 +782,7 @@ if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
 sz = sz1;
 ```
 
-根据当前这个段最终要占据的虚拟地址范围（sz 到 ph.vaddr + ph.memsz），调用 uvmalloc，在新页表内将这段用户空间创建出来，并更新原来的 p->sz。**注意：uvmalloc 只是分配了该程序段所需要的内存的物理页（因为程序文件本身是存储在磁盘中的，需要将其加载到内存中才能执行），并且在新页表中建立了映射，但是在用户页表中还没有任何实际的内容**。下面是 uvmalloc 函数的具体实现：
+根据当前这个段最终要占据的虚拟地址范围（sz 到 ph.vaddr + ph.memsz），调用 uvmalloc，在新页表内将这段用户空间创建出来，并更新原来的 sz。**注意：uvmalloc 只是分配了该程序段所需要的内存的物理页（因为程序文件本身是存储在磁盘中的，需要将其加载到内存中才能执行），并且在新页表中建立了映射，但是在用户页表中还没有任何实际的内容**。下面是 uvmalloc 函数的具体实现：
 ```c
 // Allocate PTEs and physical memory to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
@@ -813,4 +813,34 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 }
 ```
 
-而 `loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz)` 这一行代码通过 loadseg 函数，才将chen
+而 `loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz)` 这一行代码通过 loadseg 函数，才将程序段真正拷贝到用户页表中去。loadseg 函数是这样的：
+
+```c
+// Load a program segment into pagetable at virtual address va.
+// va must be page-aligned
+// and the pages from va to va+sz must already be mapped.
+// Returns 0 on success, -1 on failure.
+static int
+loadseg(pagetable_t pagetable, uint64 va, struct inode *ip, uint offset, uint sz)
+{
+  uint i, n;
+  uint64 pa;
+
+  for(i = 0; i < sz; i += PGSIZE){
+    pa = walkaddr(pagetable, va + i);
+    if(pa == 0)
+      panic("loadseg: address should exist");
+    if(sz - i < PGSIZE)
+      n = sz - i;
+    else
+      n = PGSIZE;
+    if(readi(ip, 0, (uint64)pa, offset+i, n) != n)
+      return -1;
+  }
+  
+  return 0;
+}
+```
+
+从 for 循环出来以后，代表程序文件，即 ELF 文件已经加载完成了，那么关闭 inode。随后，开始准备处理**用户栈**。原来的大小 sz 被记录为 oldsz，然后继续通过 uvmalloc 函数分配**两张虚拟页**给用户栈和 guard page。为什么需要 guard page？就是为了**预防
+
