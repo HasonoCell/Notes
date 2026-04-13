@@ -782,7 +782,7 @@ if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
 sz = sz1;
 ```
 
-根据当前这个段最终要占据的虚拟地址范围（sz 到 ph.vaddr + ph.memsz），调用 uvmalloc，在新页表内将这段用户空间创建出来，并更新原来的 p->sz。下面是 uvmalloc 函数的具体实现：
+根据当前这个段最终要占据的虚拟地址范围（sz 到 ph.vaddr + ph.memsz），调用 uvmalloc，在新页表内将这段用户空间创建出来，并更新原来的 p->sz，此时只是将程序段在新页表中的。下面是 uvmalloc 函数的具体实现：
 ```c
 // Allocate PTEs and physical memory to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
