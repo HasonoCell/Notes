@@ -27,4 +27,38 @@ struct spinlock {
 };
 ```
 
-其中的 locked 字段当锁可用时为 0，锁被持有时为非 0。
+其中的 locked 字段当锁可用时为 0，锁被持有时为非 0。接着我们来看看 acquire 函数的实现:
+
+```c
+// Acquire the lock.
+// Loops (spins) until the lock is acquired.
+void
+acquire(struct spinlock *lk)
+{
+  push_off(); // disable interrupts to avoid deadlock.
+  if(holding(lk))
+    panic("acquire");
+
+  // On RISC-V, sync_lock_test_and_set turns into an atomic swap:
+  //   a5 = 1
+  //   s1 = &lk->locked
+  //   amoswap.w.aq a5, a5, (s1)
+  while(__sync_lock_test_and_set(&lk->locked, 1) != 0)
+    ;
+
+  // Tell the C compiler and the processor to not move loads or stores
+  // past this point, to ensure that the critical section's memory
+  // references happen strictly after the lock is acquired.
+  // On RISC-V, this emits a fence instruction.
+  __sync_synchronize();
+
+  // Record info about lock acquisition for holding() and debugging.
+  lk->cpu = mycpu();
+}
+```
+
+教材中对不同粒度的锁的介绍我觉得挺好的，故摘录：
+
+> 作为粗粒度锁的示例，xv6 的 kalloc.c 分配器具有受单个锁保护的单个空闲列表。如果不同 CPU 上的多个进程尝试同时分配物理页，则每个进程都必须通过在 acquire 中旋转来等待轮到它。旋转会浪费 CPU 时间，因为它不是有用的工作。如果锁竞争浪费了很大一部分 CPU 时间，也许可以通过更改分配器设计来提高性能，**使其具有多个空闲列表，每个列表都有自己的锁，以允许真正的并行分配。** 
+> 
+> 作为细粒度锁的一个示例，xv6 对每个文件都有一个单独的锁，因此操作不同文件的进程通常可以继续执行而无需等待彼此的锁。如果希望允许进程同时写入同一文件的不同区域，则可以使文件锁定方案变得更加细粒度。最终，锁粒度决策需要由性能测量和复杂性考虑来驱动。
