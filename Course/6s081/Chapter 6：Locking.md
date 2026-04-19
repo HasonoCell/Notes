@@ -108,3 +108,19 @@ g() {
 ```
 
 call_once 语义上将仅被调用一次：由 f 或 g 调用，但不能同时由两者调用。但是如果允许重入锁，并且 h 恰好调用 g，call_once 将被调用两次；如果不允许重入锁，则 h 调用 g 会导致死锁，这显然也不行。所以最好的方式是直接 panic，避免隐式出错。
+
+此外，**同一个 CPU 上也可能发生死锁**。当一个 spinlock 同时会被普通内核线程和中断处理程序（interrupt handler，这里 interrupt 是之前讲过的 trap 的一种情况）使用时，如果某个 CPU 在持锁期间又被同一个 CPU 上的中断打断，就可能出现死锁：中断处理程序等待锁释放，而持锁线程又被中断打断无法继续运行。为了避免这种情况，xv6 规定 CPU 在持有任何 spinlock 时都必须关闭本 CPU 的中断。acquire() 会先调用 push_off() 再尝试拿锁，release() 则必须先释放锁再调用 pop_off() 恢复中断状态；同时 push_off/pop_off 还负责处理多层嵌套临界区，只有当最外层临界区退出时才真正恢复中断。
+
+自旋锁适合短临界区，因为 CPU 在原地自旋的时间不会很长，但如果临界区很长，比如要等磁盘 I/O，自旋锁就不合适了；这时 xv6 用睡眠锁来“等待时睡眠”，而不是一直自旋浪费 CPU。
+
+```c
+// Long-term locks for processes
+struct sleeplock {
+  uint locked;       // Is the lock held?
+  struct spinlock lk; // spinlock protecting this sleep lock
+  
+  // For debugging:
+  char *name;        // Name of lock.
+  int pid;           // Process holding lock
+};
+```
