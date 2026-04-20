@@ -63,7 +63,7 @@ sched(void)
 }
 ```
 
-而 swtch 就是具体的汇编代码这里就不贴出来了，主要作用就是保存当前内核线程的现场，再恢复另一个内核线程的现场。
+而 swtch 就是具体的汇编代码这里就不贴出来了，主要作用就是保存当前内核线程的现场，再恢复另一个内核线程的现场。接下来我们来看关于 CPU 非常核心且重要的一个函数 scheduler。**每个 CPU 的 scheduler 负责在本 CPU 上反复挑选 RUNNABLE 进程并切换执行，让这颗 CPU 在多个进程之间分时运行**。
 
 ```c
 // Per-CPU process scheduler.
@@ -76,13 +76,14 @@ sched(void)
 void
 scheduler(void)
 {
-  struct proc *p;
-  struct cpu *c = mycpu();
+  struct proc *p; // 全局进程表
+  struct cpu *c = mycpu(); // 当前 CPU
   
   c->proc = 0;
   for(;;){
-    // Avoid deadlock by ensuring that devices can interrupt.
-    intr_on();
+    // 打开设备 interrupt
+    // 设备 interrupt 就是：外设（键鼠，磁盘，时钟）主动向 CPU 发信号，要求内核立刻来处理某件事
+    intr_on(); 
 
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
