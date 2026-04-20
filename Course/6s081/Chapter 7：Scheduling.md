@@ -9,6 +9,8 @@
 3. scheduler 在全局进程表（本质是 struct proc 数组）中扫描，选中一个 RUNNABLE 进程，再通过 swtch 恢复它之前保存的内核上下文。
 4. 新进程随后通过 trap return 回到用户态，继续执行用户程序。
 
+![](assets/Chapter%207：Scheduling/file-20260420100245037.png)
+
 一个十分典型的例子就是 yield() 触发的切换：
 
 1. shell 进程在用户态正常运行。
@@ -60,3 +62,5 @@ sched(void)
   mycpu()->intena = intena;
 }
 ```
+
+而 swtch 就是具体的汇编代码这里就不贴出来了，主要作用就是保存当前内核线程的现场，再恢复另一个内核线程的现场。
