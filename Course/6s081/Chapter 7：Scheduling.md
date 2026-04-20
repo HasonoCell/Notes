@@ -105,3 +105,37 @@ scheduler(void)
   }
 }
 ```
+
+那么一个进程发生 timer interrupt 阻塞以后，到底是如何切换到 scheduler 函数去执行的呢？核心就是切换上下文，**将原进程的上下文保存后，切换到 CPU 的上下文**，这就是 `swtch(&p->context, &mycpu()->context);` 做的事情。随后通过 ra 寄存器保存的地址回到 scheduler 函数继续执行。
+
+```c
+// Saved registers for kernel context switches.
+struct context {
+  uint64 ra;
+  uint64 sp;
+
+  // callee-saved
+  uint64 s0;
+  uint64 s1;
+  uint64 s2;
+  uint64 s3;
+  uint64 s4;
+  uint64 s5;
+  uint64 s6;
+  uint64 s7;
+  uint64 s8;
+  uint64 s9;
+  uint64 s10;
+  uint64 s11;
+};
+```
+
+```c
+// Per-CPU state.
+struct cpu {
+  struct proc *proc;          // The process running on this cpu, or null.
+  struct context context;     // swtch() here to enter scheduler().
+  int noff;                   // Depth of push_off() nesting.
+  int intena;                 // Were interrupts enabled before push_off()?
+};
+```
