@@ -161,7 +161,7 @@ sleep(void *chan, struct spinlock *lk)
   release(lk);
 
   // Go to sleep.
-  p->chan = chan; // 睡在这个 chan 上，将其记录到 p 中
+  p->chan = chan; // 通过一个 chan 来作为一个标签
   p->state = SLEEPING; // 更新状态
 
   sched();
@@ -185,7 +185,7 @@ wakeup(void *chan)
 {
   struct proc *p;
 
-  // 遍历进程表，唤醒某个 chan 上的所有睡眠的进程
+  // 遍历进程表，唤醒所有具有 chan 标签的睡眠的进程
   for(p = proc; p < &proc[NPROC]; p++) {
     if(p != myproc()){
       acquire(&p->lock);
