@@ -85,14 +85,15 @@ scheduler(void)
     // 设备 interrupt 就是：外设（键鼠，磁盘，时钟）主动向 CPU 发信号，要求内核立刻来处理某件事
     intr_on(); 
 
+	// 死循环，每个 CPU 会不停执行任务
     for(p = proc; p < &proc[NPROC]; p++) {
+    // 加锁保护全局进程表
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
+	    // 找到空闲并且可以执行的 process，然后执行它
         p->state = RUNNING;
         c->proc = p;
+        // 保存当前 scheduler 线程的上下文，切换到将要执行的那个进程的上下文（主要就是寄存器）
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
