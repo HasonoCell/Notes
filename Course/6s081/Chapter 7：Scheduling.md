@@ -157,8 +157,8 @@ sleep(void *chan, struct spinlock *lk)
   // (wakeup locks p->lock),
   // so it's okay to release lk.
 
-  acquire(&p->lock);  //DOC: sleeplock1
-  release(lk);
+  acquire(&p->lock);  // 先拿内部状态锁
+  release(lk); // 再释放外部条件锁
 
   // Go to sleep.
   p->chan = chan; // 通过一个 chan 来作为一个标签
@@ -197,6 +197,16 @@ wakeup(void *chan)
   }
 }
 ```
+
+sleep 函数涉及到了两个锁：外部条件锁 lk 和内部 process 状态锁 p->lock。先说**外部条件锁 lk** 是什么，比如：
+
+- sys_sleep() 里是 tickslock
+- pipe 里是 pipe 的锁
+- console 里是 cons.lock
+
+假设当前 CPU 在等 ticks，拿着 tickslock，发现 ticks 还没到，当前进程准备睡眠，这时如果没有 tickslock，另一个 CPU 可能先把 ticks 改了，即**修改了外部条件**，再 wakeup(&ticks)
+但这时该进程还没真正睡下去，所以造成了**唤醒丢失（lost wakeup）**，所以 lk 的作用是：把“检查条件”和“准备睡眠”这段过程，和“修改条件并唤醒”串成同一把锁保护下的操作。
+
 ## 时间机制
 
 前面一直提到 timer interrupt 这个概念，这里我们就来好好捋一捋操作系统的时间机制。先分清一些概念：
