@@ -161,8 +161,8 @@ sleep(void *chan, struct spinlock *lk)
   release(lk);
 
   // Go to sleep.
-  p->chan = chan;
-  p->state = SLEEPING;
+  p->chan = chan; // 睡在这个 chan 上，将其记录到 p 中
+  p->state = SLEEPING; // 更新状态
 
   sched();
 
@@ -175,6 +175,28 @@ sleep(void *chan, struct spinlock *lk)
 }
 ```
 
+wakeup 函数有一个很重要的点是，它也只是修改 process 的状态而不直接运行 process，修改状态后还是要等待 scheduler 的调度从而来决定哪些进程要运行。
+
+```c
+// Wake up all processes sleeping on chan.
+// Must be called without any p->lock.
+void
+wakeup(void *chan)
+{
+  struct proc *p;
+
+  // 遍历进程表，唤醒某个 chan 上的所有睡眠的进程
+  for(p = proc; p < &proc[NPROC]; p++) {
+    if(p != myproc()){
+      acquire(&p->lock);
+      if(p->state == SLEEPING && p->chan == chan) {
+        p->state = RUNNABLE;
+      }
+      release(&p->lock);
+    }
+  }
+}
+```
 ## 时间机制
 
 前面一直提到 timer interrupt 这个概念，这里我们就来好好捋一捋操作系统的时间机制。先分清一些概念：
