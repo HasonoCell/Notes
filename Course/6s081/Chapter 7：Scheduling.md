@@ -139,3 +139,48 @@ struct cpu {
   int intena;                 // Were interrupts enabled before push_off()?
 };
 ```
+
+yield、sleep 和 exit 都会最终进入 sched()，从而让出 CPU 重新调度。yield 是进程主动放弃当前时间片，并不需要等待某个事件；sleep 则是进程因等待某个条件或事件而阻塞，把自己标记为 SLEEPING 并记录睡眠的 channel，等别的进程通过 wakeup(chan) 将其唤醒；exit 则不是等待，而是进程结束执行，进入 ZOMBIE 状态后交出 CPU。
+
+```c
+// Atomically release lock and sleep on chan.
+// Reacquires lock when awakened.
+void
+sleep(void *chan, struct spinlock *lk)
+{
+  struct proc *p = myproc();
+  
+  // Must acquire p->lock in order to
+  // change p->state and then call sched.
+  // Once we hold p->lock, we can be
+  // guaranteed that we won't miss any wakeup
+  // (wakeup locks p->lock),
+  // so it's okay to release lk.
+
+  acquire(&p->lock);  //DOC: sleeplock1
+  release(lk);
+
+  // Go to sleep.
+  p->chan = chan;
+  p->state = SLEEPING;
+
+  sched();
+
+  // Tidy up.
+  p->chan = 0;
+
+  // Reacquire original lock.
+  release(&p->lock);
+  acquire(lk);
+}
+```
+
+## 时间机制
+
+前面一直提到 timer interrupt 这个概念，这里我们就来好好捋一捋操作系统的时间机制。先分清一些概念：
+
+1. 真实时间：由硬件时钟/定时器提供，和操作系统是否运行无关，我们平常说“过去了 1s”，就是真实时间。
+2. CPU 时间：这是某个进程真正占用了 CPU 多久。比如一个进程跑了 20ms 的计算，这 20ms 就是它的 CPU 时间。
+3. 时间片：这是操作系统规定的一个进程连续占用 CPU 的最长时间。
+
+操作系统想做到两件事：**不想让一个进程长期霸占 CPU 资源，而让多个进程看起来都在同时进行**。所以内核会规定：每个进程最多连续运行一小段时间，到点了就切换到别的进程，这一小段时间就是时间片，也叫 quantum。时间片的到期通常由**硬件定时器中断 （timer interrupt）** 触发，操作系统据此进行抢占式调度。
