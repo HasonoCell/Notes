@@ -35,6 +35,7 @@ xv6 中文件系统分为了如下几层：
 为什么文件系统中需要 buffer cache？主要是为了给访问速度极慢的磁盘块添加一层**内存缓存**，从而让热点块不用每次都去硬盘里面读。此外，同一块磁盘在内存里只能有一份拷贝，而且同一时刻只能一个内核线程改它。
 
 我们先来看看最核心的 buf 结构体：struct buf 可以理解成**某个完整的磁盘块在内存里的缓存副本**
+
 ```c
 struct buf {
   int valid;   // 这份缓存内容是否已经从磁盘读进来
@@ -51,3 +52,82 @@ struct buf {
 
 这其中 dev + blockno 决定 buf 是磁盘上的哪一块内容的缓存，valid 决定缓存内容能不能直接用，refcnt 决定此 buf 能不能被回收复用。
 
+上面只是单个 buffer 的结构，而在全局还有一个结构体 bcahce 来管理 buffer cache layer 这一层：
+
+```c
+struct {
+    struct spinlock lock; // 保护整个缓存的元数据，比如链表、refcnt、哪个 buf 可复用
+    struct buf buf[NBUF]; // buffer 池，通过数字存放固定数量的 buffer
+
+    // 双向链表的哨兵节点，不存实际数据，只是方便管理 LRU 链表
+    // head.next 指向最近使用的 buffer
+    // head.prev 指向最久没用的 buffer    
+    struct buf head;
+} bcache;
+```
+
+随后，通过 binit 函数来初始化 bcache，简单来说 binit 就是把 buf[] 这个数组变成一个可管理的 LRU 双向链表，并给每个 buffer 装上自己的锁：
+
+```c
+void
+binit(void)
+{
+  struct buf *b;
+
+  // 初始化 bcache 自旋锁
+  initlock(&bcache.lock, "bcache");
+
+  // 初始化 LRU 链表
+  bcache.head.prev = &bcache.head;
+  bcache.head.next = &bcache.head;
+  
+  // 遍历 buf 池，将新插入的 buf 放在 head 哨兵节点的下一个，表示最新
+  for(b = bcache.buf; b < bcache.buf+NBUF; b++){
+    b->next = bcache.head.next;
+    b->prev = &bcache.head;
+    // 初始化 buf 睡眠锁
+    initsleeplock(&b->lock, "buffer");
+    bcache.head.next->prev = b;
+    bcache.head.next = b;
+  }
+}
+```
+
+OK～我们现在目前已经对 buffer cache layer 的结构有了大致的认识了。接下来我们就看看，当需要访问磁盘块的内容时，buffer cache 到底是如何使用缓存的，其核心就是 bget 函数：
+
+```c
+// 根据传入的 dev 和 blockno 参数，确定要访问的磁盘块，尝试返回该磁盘块的 buf
+// 如果没有找到 buf，那么就会新分配一个 buf；找到了，那就返回 buf 并为其加锁
+static struct buf*
+bget(uint dev, uint blockno)
+{
+  struct buf *b;
+
+  acquire(&bcache.lock);
+
+  // Is the block already cached?
+  for(b = bcache.head.next; b != &bcache.head; b = b->next){
+    if(b->dev == dev && b->blockno == blockno){
+      b->refcnt++;
+      release(&bcache.lock);
+      acquiresleep(&b->lock);
+      return b;
+    }
+  }
+
+  // Not cached.
+  // Recycle the least recently used (LRU) unused buffer.
+  for(b = bcache.head.prev; b != &bcache.head; b = b->prev){
+    if(b->refcnt == 0) {
+      b->dev = dev;
+      b->blockno = blockno;
+      b->valid = 0;
+      b->refcnt = 1;
+      release(&bcache.lock);
+      acquiresleep(&b->lock);
+      return b;
+    }
+  }
+  panic("bget: no buffers");
+}
+```
