@@ -45,6 +45,9 @@ struct buf {
   uint refcnt; // 目前有多少地方在使用这个 buf
   struct buf *prev; // 和下面的 next 字段一样，所有 struct buf 组成一个双向链表
   struct buf *next;
-  uchar data[BSIZE];
+  uchar data[BSIZE]; // buf 结构体中实际存放内容的字节数组，BSZIE = 1024，一个 char 为一字节
 };
 ```
+
+这其中 dev + blockno 决定 buf 是磁盘上的哪一块内容的缓存，valid 决定缓存内容能不能直接用，refcnt 决定此 buf 能不能被回收复用。
+
