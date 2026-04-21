@@ -41,7 +41,7 @@ struct buf {
   int valid;   // 这份缓存内容是否已经从磁盘读进来
   int disk;    // 磁盘设备当前是否正在处理这块 buf
   uint dev;    // 属于哪个磁盘设备
-  uint blockno; // 磁盘上的第几个块
+  uint blockno; // 那个磁盘上的第几个块
   struct sleeplock lock; // 这块 buf 的睡眠锁，保证同一时刻只有一个内核线程读写它
   uint refcnt; // 目前有多少地方在使用这个 buf
   struct buf *prev; // 和下面的 next 字段一样，所有 struct buf 组成一个双向链表
