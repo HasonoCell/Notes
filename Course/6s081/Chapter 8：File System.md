@@ -105,8 +105,9 @@ bget(uint dev, uint blockno)
 
   acquire(&bcache.lock);
 
-  // Is the block already cached?
+  // 从最新的 buffer 开始遍历池子
   for(b = bcache.head.next; b != &bcache.head; b = b->next){
+    // 找目标 buffer，找到了就让引用数+1
     if(b->dev == dev && b->blockno == blockno){
       b->refcnt++;
       release(&bcache.lock);
@@ -115,13 +116,13 @@ bget(uint dev, uint blockno)
     }
   }
 
-  // Not cached.
-  // Recycle the least recently used (LRU) unused buffer.
+  // 如果经历上面的循环但是还没有找到目标 buffer
+  // 就找 LRU 链表中找到一个最旧的没人使用的 buffer，分配给这个磁盘块
   for(b = bcache.head.prev; b != &bcache.head; b = b->prev){
     if(b->refcnt == 0) {
       b->dev = dev;
       b->blockno = blockno;
-      b->valid = 0;
+      b->valid = 0; // vaild=0 表示数据不可信，要等 bread 重新读盘读进来
       b->refcnt = 1;
       release(&bcache.lock);
       acquiresleep(&b->lock);
@@ -129,5 +130,56 @@ bget(uint dev, uint blockno)
     }
   }
   panic("bget: no buffers");
+}
+```
+
+这里有一个点是，因为 buffer 的数量是固定的（ buffer 数组长度为 NBUF），所以当需要为一个磁盘块分配 buffer 时，操作系统选择**淘汰最旧的没被使用的 buffer**，并将其重新分配。前面说过，重新分配的 buffer 的 vaild 被标记为 0 表示数据不可信，需要重新读盘读进来，而读盘进 buffer 就是通过 bread 实现的：
+
+```c
+struct buf*
+bread(uint dev, uint blockno)
+{
+  struct buf *b;
+
+  b = bget(dev, blockno);
+  if(!b->valid) { // 如果 vaild=0
+	// 将磁盘块的内容读到 buffer 中，0 表示读，virtio 函数目前暂时不去关心实现
+    virtio_disk_rw(b, 0);
+    b->valid = 1; // 更新 vaild 表示数据现在可信
+  }
+  return b;
+}
+```
+
+和 bread 类似的是 bwrite，其通过通过 virtio_disk_rw 将 buffer 中的内容写回磁盘。进程通过 bread() 拿到这块 buffer 后，直接读写的是 b->data，所以如果有修改会先发生在内存里，不会自动落盘，bwrite() 就是把这份内存里的修改同步回磁盘。
+
+进程通过 bread 函数，获取到一个 buffer 进行使用，等到使用完毕后，就通过 brelease 进行释放：
+
+```c
+void
+brelse(struct buf *b)
+{
+  if(!holdingsleep(&b->lock))
+    panic("brelse");
+
+  // 释放掉这个 buffer 的睡眠锁，确保别的进程可以再通过 bread 拿到这个 buffer
+  releasesleep(&b->lock);
+
+  acquire(&bcache.lock);
+  // 这个 buffer 的引用数-1
+  b->refcnt--;
+  if (b->refcnt == 0) {
+    // 如果这次释放后引用数为0了，那就代表该 buffer 空闲了
+    // 那么就可以参与 LRU 的调度了，因为从 get 到 release，刚好完成了一次使用周期
+    // 移动到 head.next 表示最近才使用过
+    b->next->prev = b->prev;
+    b->prev->next = b->next;
+    b->next = bcache.head.next;
+    b->prev = &bcache.head;
+    bcache.head.next->prev = b;
+    bcache.head.next = b;
+  }
+  
+  release(&bcache.lock);
 }
 ```
