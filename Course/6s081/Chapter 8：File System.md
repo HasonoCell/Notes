@@ -30,6 +30,8 @@ xv6 中文件系统分为了如下几层：
 - 再后面：bitmap，记录哪些数据块空闲。
 - 最后：data blocks，真正存文件内容和目录内容。
 
+![](assets/Chapter%208：File%20System/file-20260422145202294.png)
+
 ## buffer cache
 
 为什么文件系统中需要 buffer cache？主要是为了给访问速度极慢的磁盘块添加一层**内存缓存**，从而让热点块不用每次都去硬盘里面读。此外，同一块磁盘在内存里只能有一份拷贝，而且同一时刻只能一个内核线程改它。
@@ -209,8 +211,8 @@ struct logheader {
 // struct log 是 logging layer 的全局管理对象
 struct log {
   struct spinlock lock; // log 层的锁
-  int start; // 日志在磁盘上的起始块号
-  int size; // 日志总共能用多少块
+  int start; // log 区域在磁盘上的起始块号
+  int size; // log 区域总共会占用多少块
   int outstanding; // 当前有多少个文件系统系统调用正在进行、并占用了日志空间
   int committing;  // 当前是不是正在提交事务
   int dev; // 日志所在的磁盘设备号
@@ -230,13 +232,15 @@ initlog(int dev, struct superblock *sb)
 
   // 初始化 log 全局锁
   initlock(&log.lock, "log");
-  // 从 superblock 处获取 log block 状态
-  log.start = sb->logstart; // log block 从哪个磁盘块开始
-  log.size = sb->nlog; // log block 占几个磁盘块
+  // 从 superblock 处获取 log 区域状态
+  log.start = sb->logstart; // log 区域从第几个磁盘块开始
+  log.size = sb->nlog; // log 区域占几个磁盘块
   log.dev = dev; // log block 所处的磁盘设备号
   recover_from_log();
 }
 ```
+
+从上面的代码中我们可以看出：**struct log 是内存里的全局管理状态，不在磁盘上，kernel 通过它来管理日志系统。struct logheader 既有内存副本，也有磁盘上的 header block 副本，log 区域的第一个磁盘块就是 header block，它表示一次事务记录了哪些块（总数量，块编号）**。log 区域剩下的部分就是 logged block，用来存放在 buffer cache 内存中的修改，等待将其持久化到真实文件位置。
 
 初始化 log 层的过程中，做了一件非常重要的事：recover_from_log，目的就是检查有无没有处理完的日志：
 
@@ -244,9 +248,60 @@ initlog(int dev, struct superblock *sb)
 static void
 recover_from_log(void)
 {
-  read_head();
-  install_trans(1); // if committed, copy from log to disk
+  // 从磁盘中的 header block 读取该次事务的信息，存放到内存中的 logheader
+  read_head(); 
+  // 读完了该次事务的信息之后，就可以把 logged block 里的备份转移到正式文件系统区
+  install_trans(1); 
   log.lh.n = 0;
-  write_head(); // clear the log
+  write_head();
+}
+```
+
+```c
+static void
+read_head(void)
+{
+  // 这个函数逻辑很简单，就只做一件事：将磁盘中的 header 信息复制到内存中
+  // 可以看出 read_head 就是通过 bread 去磁盘里面读 header block，并且将结果缓存在 buffer 中
+  struct buf *buf = bread(log.dev, log.start);
+  struct logheader *lh = (struct logheader *) (buf->data);
+  int i;
+  // 赋值给内存中的 logheader
+  log.lh.n = lh->n;
+  for (i = 0; i < log.lh.n; i++) {
+    log.lh.block[i] = lh->block[i];
+  }
+  brelse(buf);
+}
+
+static void
+install_trans(int recovering)
+{
+  int tail;
+
+  for (tail = 0; tail < log.lh.n; tail++) {
+    struct buf *lbuf = bread(log.dev, log.start+tail+1);
+    struct buf *dbuf = bread(log.dev, log.lh.block[tail]);
+    memmove(dbuf->data, lbuf->data, BSIZE);
+    bwrite(dbuf);
+    if(recovering == 0)
+      bunpin(dbuf);
+    brelse(lbuf);
+    brelse(dbuf);
+  }
+}
+
+static void
+write_head(void)
+{
+  struct buf *buf = bread(log.dev, log.start);
+  struct logheader *hb = (struct logheader *) (buf->data);
+  int i;
+  hb->n = log.lh.n;
+  for (i = 0; i < log.lh.n; i++) {
+    hb->block[i] = log.lh.block[i];
+  }
+  bwrite(buf);
+  brelse(buf);
 }
 ```
