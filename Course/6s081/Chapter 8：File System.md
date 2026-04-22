@@ -282,12 +282,17 @@ install_trans(int recovering)
 
   // 遍历该次事务涉及到的所有磁盘块
   for (tail = 0; tail < log.lh.n; tail++) {
-    struct buf *lbuf = bread(log.dev, log.start+tail+1);
+    // 读日志区里的第 tail 个 logged block buffer，+1 是跳过开头的 header block。
+	struct buf *lbuf = bread(log.dev, log.start+tail+1);
+	// 读这个 logged block 对应的正式硬盘块 buffer。
     struct buf *dbuf = bread(log.dev, log.lh.block[tail]);
+    // 把日志区里的完整块内容拷贝到正式块的 buffer 里
     memmove(dbuf->data, lbuf->data, BSIZE);
+    // 再将正式块 buffer 实际写入到磁盘中
     bwrite(dbuf);
     if(recovering == 0)
       bunpin(dbuf);
+    // 释放两个 buffer
     brelse(lbuf);
     brelse(dbuf);
   }
