@@ -21,7 +21,7 @@ xv6 中文件系统分为了如下几层：
 
 ![](assets/Chapter%208：File%20System/file-20260421145955920.png)
 
-传统磁盘硬件通常按照每 512 个字节为一个**扇区**来读写，而操作系统中的文件系统读写磁盘时，会按照**块（Block）** 的方式读写，且块通常是扇区的倍数。xv6 中一个 block 是 1024 个字节，将磁盘分为了这几部分：
+操作系统可以管理多个磁盘设备，并且不会区分磁盘到底是机械硬盘，固态硬盘还是 U 盘等等，都统一抽象成可以按块读写的存储设备。每个设备用设备号 dev 区分。传统磁盘硬件通常按照每 512 个字节为一个**扇区**来读写，而操作系统中的文件系统读写磁盘时，会按照**块（Block）** 的方式读写，且块通常是扇区的倍数。xv6 中一个 block 是 1024 个字节，将磁盘分为了这几部分：
 
 - block 0：boot sector，不用来存文件系统数据。
 - block 1：superblock，记录文件系统整体信息。
@@ -228,10 +228,25 @@ initlog(int dev, struct superblock *sb)
   if (sizeof(struct logheader) >= BSIZE)
     panic("initlog: too big logheader");
 
+  // 初始化 log 全局锁
   initlock(&log.lock, "log");
-  log.start = sb->logstart;
-  log.size = sb->nlog;
-  log.dev = dev;
+  // 从 superblock 处获取 log block 状态
+  log.start = sb->logstart; // log block 从哪个磁盘块开始
+  log.size = sb->nlog; // log block 占几个磁盘块
+  log.dev = dev; // log block 所处的磁盘设备号
   recover_from_log();
+}
+```
+
+初始化 log 层的过程中，做了一件非常重要的事：recover_from_log，目的就是检查有无没有处理完的日志：
+
+```c
+static void
+recover_from_log(void)
+{
+  read_head();
+  install_trans(1); // if committed, copy from log to disk
+  log.lh.n = 0;
+  write_head(); // clear the log
 }
 ```
