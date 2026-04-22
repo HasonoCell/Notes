@@ -183,3 +183,5 @@ brelse(struct buf *b)
   release(&bcache.lock);
 }
 ```
+
+## logging
