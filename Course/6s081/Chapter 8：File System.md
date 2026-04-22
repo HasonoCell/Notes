@@ -250,7 +250,7 @@ recover_from_log(void)
 {
   // 从磁盘中的 header block 读取该次事务的信息，存放到内存中的 logheader
   read_head(); 
-  // 读完了该次事务的信息之后，就可以把 logged block 里的备份转移到正式文件系统区
+  // 读完了该次事务的信息之后，就开启事务，把 logged block 里的备份转移到正式文件系统区
   install_trans(1); 
   log.lh.n = 0;
   write_head();
@@ -280,6 +280,7 @@ install_trans(int recovering)
 {
   int tail;
 
+  // 遍历该次事务涉及到的所有磁盘块
   for (tail = 0; tail < log.lh.n; tail++) {
     struct buf *lbuf = bread(log.dev, log.start+tail+1);
     struct buf *dbuf = bread(log.dev, log.lh.block[tail]);
