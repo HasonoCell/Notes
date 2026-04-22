@@ -252,7 +252,9 @@ recover_from_log(void)
   read_head(); 
   // 读完了该次事务的信息之后，就开启事务，把 logged block 里的备份转移到正式文件系统区
   install_trans(1); 
+  // 因为这里将内存中的 lh.n 赋值为 0 了
   log.lh.n = 0;
+  // 所以后续 write head 就会清空 header block
   write_head();
 }
 ```
@@ -261,7 +263,7 @@ recover_from_log(void)
 static void
 read_head(void)
 {
-  // 这个函数逻辑很简单，就只做一件事：将磁盘中的 header 信息复制到内存中
+  // read_head 顾名思义就是将磁盘中的 header block 信息读到内存中
   // 可以看出 read_head 就是通过 bread 去磁盘里面读 header block，并且将结果缓存在 buffer 中
   struct buf *buf = bread(log.dev, log.start);
   struct logheader *lh = (struct logheader *) (buf->data);
@@ -301,13 +303,17 @@ install_trans(int recovering)
 static void
 write_head(void)
 {
+  // write_head 顾名思义就是将内存中的 log header 信息写回 header block
   struct buf *buf = bread(log.dev, log.start);
   struct logheader *hb = (struct logheader *) (buf->data);
+  
   int i;
   hb->n = log.lh.n;
   for (i = 0; i < log.lh.n; i++) {
     hb->block[i] = log.lh.block[i];
   }
+  
+  // 将 buffer 中的改动落盘
   bwrite(buf);
   brelse(buf);
 }
