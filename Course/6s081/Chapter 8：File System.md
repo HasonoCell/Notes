@@ -488,13 +488,14 @@ balloc(uint dev)
 
 inode 层把“文件”这个概念从磁盘块里抽出来，变成一个可管理的对象。inode block 里面存放的是**文件类型，文件大小，链接数**等等**文件元数据**，而 data block 存放的就是文件实际的数据内容。比如 hello.txt，inode 里记录它是普通文件，大小是 13 字节，内容在第 100、101 号 data block 上，data block 里实际放的就是：`hello world\n`。一个文件想要存储在文件系统管理下的磁盘中，本身就要分两部分存储：元信息存储在 inode block，实际内容存储在 data block，当该文件被进程访问时，需要将元信息从磁盘读取到内存中供 kernel 运行时管理，这也就是为什么还有一个内存中的 inode 结构体。
 
-首先我们来看看与 inode 有关的两个结构体，一个是内存中的 inode，存储在 itable 中；一个是磁盘中的 dinode，存储在 inode block 区域：
+首先我们来看看与 inode 有关的两个结构体，一个是内存中的 inode，存储在 itable 中；一个是磁盘中的 dinode，存储在 inode block 区域。这里解释一下 addrs 的 NDIRECT 啥意思：**addrs 这个数组中，前 NDIRECT 存储的是直接的 data block 的编号，而一个文件如果所需要的空间超过了 NDIRECT 个 data block 怎么办呢，xv6 就再用 ip->addrs[NDIRECT] 这个位置，存一个间接块的块号。这个间接块里，不存文件内容，而是存一串更多的数据块号。这个区域也就是 indirect 区**
+
 
 ```c
 struct inode {
   uint dev;           // 所在磁盘设备号
-  uint inum;          // inode 编号
-  int ref;            // 该 inode 引用数
+  uint inum;          // 该 inode 所在 inode block 的编号
+  int ref;            // 有多少个 C 语言指针指向该 inode
   struct sleeplock lock; // 操作磁盘是一个很耗时的过程，理所应当使用睡眠锁
   int valid;          // 该 inode 是否已从磁盘中读取过了
 
@@ -512,7 +513,7 @@ struct dinode {
   short minor;     
   short nlink;          // 有多少目录项指向这个 inode
   uint size;            // 文件大小，单位是字节
-  uint addrs[NDIRECT+1];   // 所处的 data block 的地址，一个文件可能会占用多个 data block，所以需要一个数组存储多个地址
+  uint addrs[NDIRECT+1];   // 所处的 data block 的编号，注意不是地址！！！！一个文件可能会占用多个 data block，所以需要一个数组存储多个编号
 };
 
 // inode 表，管理内存中所有的 inode 结构体
@@ -541,7 +542,7 @@ iinit()
 
 ### inode 的分配和释放
 
-随后通过 ialloc 函数在磁盘的 inode blocks 中分配一个新的 inode，返回对应的内存 inode 引用；其实整体和 balloc 的逻辑非常类似，不同的是 balloc 扫描 bitmap，查找空闲的 data block，ialloc 扫描 inode blocks，找空闲的 inode。
+随后通过 ialloc 函数在磁盘的 inode blocks 中分配一个新的 inode，返回对应的内存的 inode 引用；其实整体和 balloc 的逻辑非常类似，不同的是 balloc 扫描 bitmap，查找空闲的 data block，ialloc 扫描 inode blocks，找空闲的 inode。
 
 ```c
 struct inode*
@@ -556,7 +557,7 @@ ialloc(uint dev, short type)
     bp = bread(dev, IBLOCK(inum, sb)); // 通过 inum 找到 inode 对应 inode block
     dip = (struct dinode*)bp->data + inum%IPB;
     if(dip->type == 0){  // 如果该 inode 空闲（type=0）
-      memset(dip, 0, sizeof(*dip)); // 将其内容清空
+      memset(dip, 0, sizeof(*dip)); // 将其存储的旧内容清空
       dip->type = type; // 设置该 inode 的类型
       log_write(bp);   // 把这次对 inode block 的修改记进日志
       brelse(bp);
@@ -626,7 +627,7 @@ ilock(struct inode *ip)
   acquiresleep(&ip->lock);
 
   // 如果该 inode 数据不可信
-  // 即不是复用内存中已有的 inode，而是在 itable 中新占用了一个 inode 槽位
+  // 即 iget 不是复用内存中已有的 inode，而是在 itable 中新占用了一个 inode 槽位
   // 那么就要重新从磁盘中读内容
   if(ip->valid == 0){
     bp = bread(ip->dev, IBLOCK(ip->inum, sb)); // 读到该 inode 对应的 inode block
@@ -645,7 +646,7 @@ ilock(struct inode *ip)
 }
 ```
 
-iunlock 就不用说了，只是简单的释放掉该 inode 对应的睡眠锁。更重要的是与 iget 对应的 iput，它主要做两件事：把内存 inode 的 ref 减 1，如果这是最后一个引用，并且 inode 已经没有任何目录项指向它（nlink=0），就真正释放磁盘资源，清空文件内容块 + 释放 inode
+iunlock 就不用说了，只是简单的释放掉该 inode 对应的睡眠锁。**更重要的是与 iget 对应的 iput**，它主要做两件事：把内存 inode 的 ref 减 1，如果这是最后一个引用，并且 inode 已经没有任何目录项指向它（nlink=0），就真正释放磁盘资源，清空文件内容块 + 释放 inode
 
 ```c
 void
@@ -677,34 +678,45 @@ iput(struct inode *ip)
 
 ### inode 到 data block 的映射
 
-前面我们讲了 inode 的分配和释放，都是默认 inode 已经和 data block 建立了联系了，即 inode 已经映射到了 data block。而接下来我们就来看看到底是如何映射的：
+前面我们讲了 inode 的分配和释放，都是默认 inode 已经和 data block 建立了联系了，即 inode 已经映射到了 data block。而接下来我们就来看看到底是如何映射的。
+
+bmap 函数所做的事情，就是文件内容按照 1024 个字节每块划分后的第 bn 个块，将其翻译为该文件块对应的 data block 编号：
 
 ```c
 static uint
-bmap(struct inode *ip, uint bn)
+bmap(struct inode *ip, uint bn) 
 {
   uint addr, *a;
   struct buf *bp;
 
+  // 如果 bn 处于 direct 区域，直接找到其对应的 data block 编号
   if(bn < NDIRECT){
+    // 如果该编号还是 0，说明还没开始分配 data block
     if((addr = ip->addrs[bn]) == 0)
+      // 那就通过 balloc 分配一个空闲的 data block
       ip->addrs[bn] = addr = balloc(ip->dev);
     return addr;
   }
+  
+  // 如果超过了 direct 区域，那就减去前面 NDIRECT 个直接的编号，进入 indirect 区（一个 block）
   bn -= NDIRECT;
 
   if(bn < NINDIRECT){
-    // Load indirect block, allocating if necessary.
+    // 依旧是编号为 0 那就分配空闲 data blokc
     if((addr = ip->addrs[NDIRECT]) == 0)
       ip->addrs[NDIRECT] = addr = balloc(ip->dev);
+    // 将该 indirect block 的读成 buffer
     bp = bread(ip->dev, addr);
+    
+    // 如果 indirect block 里的第 bn 个位置还是 0，就说明这个文件内容块还没分配
+    // 分配一个新的 data block，写到 indirect block 里    
     a = (uint*)bp->data;
     if((addr = a[bn]) == 0){
       a[bn] = addr = balloc(ip->dev);
-      log_write(bp);
+      log_write(bp); // 因为修改了 block 本身，所以要走日志
     }
     brelse(bp);
-    return addr;
+    return addr; // 返回最终的 data block 编号
   }
 
   panic("bmap: out of range");
