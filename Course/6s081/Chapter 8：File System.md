@@ -446,7 +446,9 @@ commit()
 
 所以一整个闭环的流程可以是： begin_op 系统调用作出的磁盘修改申请进入事务 --> log_write 登记修改了哪些块 --> end_op 结束这次系统调用 --> 如果没人再活跃，commit --> write_log / write_head / install_trans / 清日志。此外，从这里也看出来，事务的提交是 group commit，同一批次的更改会一起提交，而如果**日志区域的空间不够了，那后续调用 FS syscall 的进程也会 sleep，等待下一批次的提交**。
 
-## 空闲磁盘块
+## inode
+
+### 空闲磁盘块
 
 xv6 管理一个磁盘上的空闲磁盘块（也就是空闲的 data block）的方式也十分巧妙，通过同一个磁盘上的 bitmap block 来管理，磁盘上的每个 data block 都对应 bitmap 里的 1 个 bit，0 表示这块是空闲的，1 表示这块已经被占用了。
 
@@ -484,17 +486,18 @@ balloc(uint dev)
 }
 ```
 
-## inode
+### inode 核心结构体
 
 inode 层把“文件”这个概念从磁盘块里抽出来，变成一个可管理的对象。inode block 里面存放的是**文件类型，文件大小，链接数**等等**文件元数据**，而 data block 存放的就是文件实际的数据内容。比如 hello.txt，inode 里记录它是普通文件，大小是 13 字节，内容在第 100、101 号 data block 上，data block 里实际放的就是：`hello world\n`。一个文件想要存储在文件系统管理下的磁盘中，本身就要分两部分存储：元信息存储在 inode block，实际内容存储在 data block，当该文件被进程访问时，需要将元信息从磁盘读取到内存中供 kernel 运行时管理，这也就是为什么还有一个内存中的 inode 结构体。
 
 首先我们来看看与 inode 有关的两个结构体，一个是内存中的 inode，存储在 itable 中；一个是磁盘中的 dinode，存储在 inode block 区域。这里解释一下 addrs 的 NDIRECT 啥意思：**addrs 这个数组中，前 NDIRECT 存储的是直接的 data block 的编号，而一个文件如果所需要的空间超过了 NDIRECT 个 data block 怎么办呢，xv6 就再用 ip->addrs[NDIRECT] 这个位置，存一个间接块的块号。这个间接块里，不存文件内容，而是存一串更多的数据块号。这个区域也就是 indirect 区**
 
+![](assets/Chapter%208：File%20System/file-20260426153825020.png)
 
 ```c
 struct inode {
   uint dev;           // 所在磁盘设备号
-  uint inum;          // 该 inode 所在 inode block 的编号
+  uint inum;          // 该 inode 的全局编号
   int ref;            // 有多少个 C 语言指针指向该 inode
   struct sleeplock lock; // 操作磁盘是一个很耗时的过程，理所应当使用睡眠锁
   int valid;          // 该 inode 是否已从磁盘中读取过了
@@ -723,21 +726,31 @@ bmap(struct inode *ip, uint bn)
 }
 ```
 
+### 通过 inode 读写文件
+
+bmap 成功建立了 inode 到真实 data block 之间的关系，接下来，当我们要使用文件时，就会涉及到通过 inode 来读写文件块内容，也就是 readi 和 writei 做的事情。
+
 ```c
 int
 readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
 {
+  // 解释一下参数。ip 表示目标 inode，dst 表示读出来放到哪，
+  // off 表示从文件块的哪个字节偏移开始读，n 表示读多少字节
   uint tot, m;
   struct buf *bp;
 
+  // 边界条件检查
   if(off > ip->size || off + n < off)
     return 0;
   if(off + n > ip->size)
     n = ip->size - off;
 
   for(tot=0; tot<n; tot+=m, off+=m, dst+=m){
+    // 计算当前偏移量落在第几个 data block 中，然后将该 data block 读成 buffer
     bp = bread(ip->dev, bmap(ip, off/BSIZE));
+    // 这轮循环中读取的字节量，不能超过该次读取总量也不能超过该 data block 大小
     m = min(n - tot, BSIZE - off%BSIZE);
+    // 将读取到的内容拷贝到 user space 或者 kernel space
     if(either_copyout(user_dst, dst, bp->data + (off % BSIZE), m) == -1) {
       brelse(bp);
       tot = -1;
@@ -745,7 +758,7 @@ readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
     }
     brelse(bp);
   }
-  return tot;
+  return tot; // 返回读取到的字节数量
 }
 ```
 
@@ -753,6 +766,7 @@ readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
 int
 writei(struct inode *ip, int user_src, uint64 src, uint off, uint n)
 {
+  // src 表示数据从哪里来的，off 表示从多少偏移量处开始写，n 表示写入多少个字节
   uint tot, m;
   struct buf *bp;
 
@@ -762,24 +776,241 @@ writei(struct inode *ip, int user_src, uint64 src, uint off, uint n)
     return -1;
 
   for(tot=0; tot<n; tot+=m, off+=m, src+=m){
-    bp = bread(ip->dev, bmap(ip, off/BSIZE));
+    bp = bread(ip->dev, bmap(ip, off/BSIZE)); // 找到 data block
     m = min(n - tot, BSIZE - off%BSIZE);
+    // 将把用户/内核数据拷到 buffer 中
     if(either_copyin(bp->data + (off % BSIZE), user_src, src, m) == -1) {
       brelse(bp);
       break;
     }
-    log_write(bp);
+    log_write(bp); // 注意，不能直接修改 data block，只能先修改 buffer 然后走日志系统
     brelse(bp);
   }
 
   if(off > ip->size)
     ip->size = off;
 
-  // write the i-node back to disk even if the size didn't change
-  // because the loop above might have called bmap() and added a new
-  // block to ip->addrs[].
-  iupdate(ip);
+  iupdate(ip); // 写完文件后，要修改对应的 inode 元信息
 
   return tot;
+}
+```
+
+### 一次完整的链路
+
+我们拿最简单的 echo hello > a.txt 来看看一次写文件是如何串联起来 inode，log，buffer cache 这三层东西的：
+
+1. shell 解析命令，发现要把输出重定向到 a.txt。
+2. shell 调用 open/create，沿着 pathname -> directory -> inode 找到或创建 a.txt。
+3. create() 如果是新文件，会走 ialloc() 分配 inode。
+4. shell 写文件时进入 writei()。
+5. writei() 根据偏移调用 bmap()，找到 a.txt 对应的 data block。
+6. bmap() 如果发现块还没分配，就调用 balloc() 从 bitmap 里拿一块空闲 data block。
+7. bread() 把这个 data block 读到 buffer cache。
+8. echo hello 的内容被拷到 bp->data。
+9. log_write(bp) 把这个修改记进日志。
+10. brelse(bp) 释放 buffer。
+11. end_op() 结束这次 FS syscall。
+12. 如果这是最后一个活跃 FS syscall，就 commit()：
+  - write_log() 把 buffer cache 的修改复制到磁盘日志区
+  - write_head() 提交
+  - install_trans() 把磁盘日志区的内容写回正式文件位置
+
+## directory
+
+前面的 inode 层只是讲了如何通过 inode 管理文件内容，但是我们如何找到这个文件呢？就是通过 directory 层去寻找文件代表的 inode。目录本身其实就是一个 inode，只不过它的 type 是 T_DIR。它和普通文件 inode 的区别在于，**普通文件的 data block 存放的是实际的文件内容，目录文件的 data block 存放的是 dirent**
+
+```c
+#define DIRSIZ 14
+
+struct dirent {
+  char name[DIRSIZ]; // 文件名，最多 14 个字符
+  ushort inum; // 该文件名对应的文件内容的 inode 编号
+};
+
+// 比如说 name 是 hello.txt，其对应第 33 个 inode
+```
+
+随后通过 dirlookup 函数，根据一个目录文件 inode，返回指向的 inode（可能是目录文件也可能是普通文件）：
+
+```c
+struct inode*
+dirlookup(struct inode *dp, char *name, uint *poff)
+{
+  uint off, inum;
+  struct dirent de;
+
+  // 如果传进来的 inode 不是目录文件，那不能开始查找
+  if(dp->type != T_DIR)
+    panic("dirlookup not DIR");
+
+  // 遍历目录文件的 data block，一次前进一个 dirent 大小的字节
+  for(off = 0; off < dp->size; off += sizeof(de)){
+    // 读取一个目录项到 de
+    if(readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
+      panic("dirlookup read");
+    if(de.inum == 0)
+      continue;
+    // 比较传进来的名字和目录项里的名字
+    if(namecmp(name, de.name) == 0){
+      // 如果调用者想知道这个目录项在目录里的位置，就把偏移返回
+      if(poff)
+        *poff = off;
+      // 获得该目录项指向的 inode 编号
+      inum = de.inum;
+      // 通过编号查找到该 inode 在内存中的副本
+      return iget(dp->dev, inum);
+    }
+  }
+
+  return 0;
+}
+```
+
+而 dirlink 函数，就是在一个目录文件 inode 里面，新增一条 dirent 记录：
+
+```c
+int
+dirlink(struct inode *dp, char *name, uint inum)
+{
+  int off;
+  struct dirent de;
+  struct inode *ip;
+
+  // 先检查一下要插入的 dirent 的 name 是不是已经在该目录文件中出现过了
+  if((ip = dirlookup(dp, name, 0)) != 0){
+    iput(ip);
+    return -1;
+  }
+
+  // 扫描该目录文件 inode 中的每一项 dirent
+  for(off = 0; off < dp->size; off += sizeof(de)){
+    // 把该次循环遍历到的 dirent 读进 de
+    if(readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
+      panic("dirlink read");
+    // 找到空的 dirent 槽位就停止循环
+    if(de.inum == 0)
+      break;
+  }
+
+  // 把名字写入 de
+  strncpy(de.name, name, DIRSIZ);
+  // 记下指向的 inode 编号
+  de.inum = inum;
+  // 把新的 de 写回目录文件 inode
+  if(writei(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
+    panic("dirlink");
+
+  return 0;
+}
+```
+
+当我们需要解析文件路径时，就会使用 namex 函数，其内部就是不断调用 dirlookup 来一个个对 目录文件 inode 进行解析的：
+
+```c
+static struct inode*
+namex(char *path, int nameiparent, char *name)
+{
+  struct inode *ip, *next;
+
+  // 如果路径以 / 开头，从根目录开始;否则从当前工作目录 cwd 开始
+  if(*path == '/')
+    ip = iget(ROOTDEV, ROOTINO);
+  else
+    ip = idup(myproc()->cwd);
+
+  // skipelem 将路径拆分为一个个 part，每次返回下一个还没处理的 part
+  // 比如最开始 path 为 /a/b/c，那 skipelem 就返回 b/c
+  while((path = skipelem(path, name)) != 0){
+    ilock(ip);
+    // 检查该 inode 是不是目录文件，再在里面查找下一层名字
+    if(ip->type != T_DIR){
+      iunlockput(ip);
+      return 0;
+    }
+    if(nameiparent && *path == '\0'){
+      // Stop one level early.
+      iunlock(ip);
+      return ip;
+    }
+    // 通过 dirlookup 找下一个 inode
+    if((next = dirlookup(ip, name, 0)) == 0){
+      iunlockput(ip);
+      return 0;
+    }
+    iunlockput(ip);
+    ip = next;
+  }
+  if(nameiparent){
+    iput(ip);
+    return 0;
+  }
+  return ip; // 返回最后的解析结果，比如 /a/b/c 那最后返回的就是目录文件 c 的 inode
+}
+```
+
+## file descriptor
+
+终于终于终于，从 buffer cache layer 一路往上来到了 file descriptor layer 了，这一层可以说就是操作系统 kernel 直接与文件系统打交道的地方。**通过将 inode，管道 pipe，设备 device 抽象成 file，实现了文件资源的统一调度和管理。**
+
+先来看看核心的 file 结构体，它表示的不是文件资源本身，而是操作这个资源的一个句柄 handle：
+
+```c
+// 单个 file 结构体
+struct file {
+    enum { FD_NONE, FD_PIPE, FD_INODE, FD_DEVICE } type; // 区分 inode，pipe，device 这些 type
+    int ref; // 引用数
+    char readable; // 是否可读
+    char writable; // 是否可写
+    struct pipe *pipe; // 如果是 pipe type，那就指向实际的 pipe 对象
+    struct inode *ip; // 如果是 inode type，那就指向实际的 inode 对象
+    uint off; // 如果是 inode 文件，当前读写偏移
+    short major; // device type 的设备编号
+};
+
+// 管理多个 file 结构体的全局 file 表
+struct {
+  struct spinlock lock;
+  struct file file[NFILE]; // file 数组
+} ftable;
+```
+
+通过 filealloc 函数分配一个新的 file 对象：
+
+```c
+struct file*
+filealloc(void)
+{
+  struct file *f;
+
+  acquire(&ftable.lock);
+  // 扫描全局 file 表
+  for(f = ftable.file; f < ftable.file + NFILE; f++){
+    // 如果表中某一个 file 为空槽（引用数为0），那就返回它
+    if(f->ref == 0){
+      f->ref = 1;
+      release(&ftable.lock);
+      return f;
+    }
+  }
+  release(&ftable.lock);
+  return 0;
+}
+```
+
+接下来，filedup 的作用是“复制一个文件描述符 fd”，这里要讲清楚文件描述符 fd 和文件对象 file 之间的关系：**fd -> 进程自己的 ofile[fd] -> struct file 指针**，也就是说，一个进程通过 fd 在自己打开的文件列表中去定位到真正的文件对象，因此，完全可能出现**多个进程通过不同的 fd 指向同一个 struct file** 的情况。
+
+我们再来分析一下 dup 和 filedup 的关系（这里的 dup 是 duplicate，即复制的意思）：**dup(fd) 是系统调用，在用户态使用；filedup(f) 是内核函数，处理 open file 引用计数**。dup(fd) 会找到 fd 对应的 struct file，然后调用 filedup(f) 增加这个 file 对象的引用数，再把这个同一个 struct file 放进新的 fd 槽位里，即 **dup 会创建一个新的 fd，最后两个 fd 指向同一个 file 对象**
+
+```c
+struct file*
+filedup(struct file *f)
+{
+  acquire(&ftable.lock);
+  if(f->ref < 1) // 确认传进来的文件对象仍有引用
+    panic("filedup");
+  f->ref++; // 将它的引用数+1
+  release(&ftable.lock);
+  return f;
 }
 ```
