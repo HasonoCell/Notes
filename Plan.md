@@ -1,9 +1,7 @@
-想学的有太多了，感觉时间好不够用......
-
-公开课：mit6s081，mit6824
-
-开源项目：nano-vllm，mem0，minicode......
-
-后端好多的必备知识
-
-Agent的好多知识
+- [ ] MIT 6S081
+- [ ] CS61C
+- [ ] 7-Days-Golang
+- [ ] 容器化技术，写一个 Docker
+- [ ] K8S
+- [ ] 读一些开源 Sandbox 项目源码，比如 CubeSandbox，E2B
+- [ ] 大模型基础，模型推理/部署
