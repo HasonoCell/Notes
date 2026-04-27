@@ -252,7 +252,7 @@ recover_from_log(void)
 {
   // 从磁盘中的 header block 读取该次事务的信息，存放到内存中的 logheader
   read_head(); 
-  // 读完了该次事务的信息之后，就开启事务，把 logged block 里的备份转移到正式文件系统区
+  // 读完了该次事务的信息之后，就开启事务，把 logged block 里的备份转移到 data block
   install_trans(1); 
   // 因为这里将内存中的 lh.n 赋值为 0 了
   log.lh.n = 0;
@@ -325,7 +325,7 @@ OK，之前的 recover from log 解决的是重启后过去遗留的日志问题
 
 ### 处理一次正常的 FS syscall
 
-首先就是 begin_op 函数，这个 op 是 operation 的意思，就是指的 **write，unlink，create，mkdir** 等等可能修改磁盘的 FS syscall。begin_op 发生在每个文件系统系统调用开始时，目的是**保证当前这次操作能安全参与日志事务**，处理的是运行时并发和空间预留问题
+首先就是 begin_op 函数，这个 op 是 operation 的意思，就是指的 **write，link，create，mkdir** 等等可能修改磁盘的 FS syscall。begin_op 发生在每个文件系统系统调用开始时，目的是**保证当前这次操作能安全参与日志事务**，处理的是运行时并发和空间预留问题
 
 ```c
 void
@@ -728,7 +728,22 @@ bmap(struct inode *ip, uint bn)
 
 ### 通过 inode 读写文件
 
-bmap 成功建立了 inode 到真实 data block 之间的关系，接下来，当我们要使用文件时，就会涉及到通过 inode 来读写文件块内容，也就是 readi 和 writei 做的事情。
+bmap 成功建立了 inode 到真实 data block 之间的关系，接下来，当我们要使用文件时，就会涉及到通过 inode 来读写文件块内容，也就是 readi 和 writei 做的事情。readi 和 writei 都使用了一个核心的函数 either_copyout 来将 **kernel space 的数据复制到 user space**。比如一个进程调用 read 系统调用，最后就是通过 copyout，**将从文件中读取的数据存放到虚拟地址 addr 所代表的物理地址指向的内存空间中，而这中间就是通过 p->pagetable 做虚拟地址的翻译**
+
+```c
+int
+either_copyout(int user_dst, uint64 dst, void *src, uint64 len)
+{
+  struct proc *p = myproc();
+  if(user_dst){
+    // 传入进程的页表指针，虚拟地址 dst，数据 src 和长度 len
+    return copyout(p->pagetable, dst, src, len);
+  } else {
+    memmove((char *)dst, src, len);
+    return 0;
+  }
+}
+```
 
 ```c
 int
@@ -776,7 +791,7 @@ writei(struct inode *ip, int user_src, uint64 src, uint off, uint n)
     return -1;
 
   for(tot=0; tot<n; tot+=m, off+=m, src+=m){
-    bp = bread(ip->dev, bmap(ip, off/BSIZE)); // 找到 data block
+    bp = bread(ip->dev, bmap(ip, off/BSIZE)); // 找到 data block 的 buffer
     m = min(n - tot, BSIZE - off%BSIZE);
     // 将把用户/内核数据拷到 buffer 中
     if(either_copyin(bp->data + (off % BSIZE), user_src, src, m) == -1) {
@@ -1012,5 +1027,416 @@ filedup(struct file *f)
   f->ref++; // 将它的引用数+1
   release(&ftable.lock);
   return f;
+}
+```
+
+fileclose 用来释放一个 file 及其引用的底层资源：
+
+```c
+void
+fileclose(struct file *f)
+{
+  struct file ff;
+
+  acquire(&ftable.lock);
+  // 不能关闭一个已经没有任何引用的 file
+  if(f->ref < 1) 
+    panic("fileclose");
+  if(--f->ref > 0){
+  // 如果还有别的引用就还不能关闭，直接返回
+    release(&ftable.lock);
+    return;
+  }
+  // 把这个 file 的内容拷贝到局部变量 ff，因为后续还需要按类型做进一步的资源释放
+  ff = *f;
+  // 将此 file 标记为空闲
+  f->ref = 0;
+  f->type = FD_NONE;
+  release(&ftable.lock);
+
+  // 释放该 file 所引用的底层对象）inode，pipe，device）
+  if(ff.type == FD_PIPE){
+    pipeclose(ff.pipe, ff.writable);
+  } else if(ff.type == FD_INODE || ff.type == FD_DEVICE){
+    begin_op();
+    iput(ff.ip);
+    end_op();
+  }
+}
+```
+
+filestat 将文件的元信息拷贝给用户，也就是 stat() 这个系统调用的底层实现
+
+```c
+struct stat {
+  int dev;     // File system's disk device
+  uint ino;    // Inode number
+  short type;  // Type of file
+  short nlink; // Number of links to file
+  uint64 size; // Size of file in bytes
+};
+
+int
+filestat(struct file *f, uint64 addr)
+{
+  struct proc *p = myproc();
+  struct stat st;
+  
+  // 只针对 inode 和 device
+  if(f->type == FD_INODE || f->type == FD_DEVICE){
+    ilock(f->ip);
+    stati(f->ip, &st); // 把信息填进 stat 结构体中
+    iunlock(f->ip);
+    // 再把 stat 拷贝到虚拟地址 addr
+    // 通过 p->pagetable 页表映射物理地址，这是前面讲过的页表的知识～
+    if(copyout(p->pagetable, addr, (char *)&st, sizeof(st)) < 0)
+      return -1;
+    return 0;
+  }
+  return -1;
+}
+```
+
+而一个进程 p 想要读写文件，最核心的两个函数还是 fileread 和 filewrite：
+
+```c
+int
+fileread(struct file *f, uint64 addr, int n)
+{
+  int r = 0;
+
+  // 如果该文件不可读，直接返回
+  if(f->readable == 0)
+    return -1;
+
+  if(f->type == FD_PIPE){
+  // 如果是 pipe 直接读，不涉及到 offset 偏移量的概念
+    r = piperead(f->pipe, addr, n);
+  } else if(f->type == FD_DEVICE){
+  // 如果是 device 走设备驱动
+    if(f->major < 0 || f->major >= NDEV || !devsw[f->major].read)
+      return -1;
+    r = devsw[f->major].read(1, addr, n);
+  } else if(f->type == FD_INODE){ 
+    ilock(f->ip);
+    // 如果是 inode，从 inode 对应文件里，从当前偏移 f->off 开始读
+    // addr 是用户虚拟地址，1 表示目标地址是用户地址，所以 readi() 里会用 copyout()。 
+    if((r = readi(f->ip, 1, addr, f->off, n)) > 0)
+      f->off += r; // 如果读取成功，那 file 对象所记录的 offset 偏移量就要增加
+    iunlock(f->ip);
+  } else {
+    panic("fileread");
+  }
+
+  return r;
+}
+```
+
+```c
+int
+filewrite(struct file *f, uint64 addr, int n)
+{
+  int r, ret = 0;
+
+  // 如果 file 不可写，直接返回
+  if(f->writable == 0)
+    return -1;
+
+  // 如果是 pipe 直接写
+  if(f->type == FD_PIPE){
+    ret = pipewrite(f->pipe, addr, n);
+  } else if(f->type == FD_DEVICE){
+    // 如果是 device 走设备驱动
+    if(f->major < 0 || f->major >= NDEV || !devsw[f->major].write)
+      return -1;
+    ret = devsw[f->major].write(1, addr, n);
+  } else if(f->type == FD_INODE){
+    // 如果是 inode，先计算一次最多写入多少字节才不会超出 log 区域
+    int max = ((MAXOPBLOCKS-1-1-2) / 2) * BSIZE;
+    int i = 0;
+    
+    // 拆成多个小事务来写，每次写入 n1 大小的内容
+    while(i < n){
+      int n1 = n - i;
+      if(n1 > max)
+        n1 = max;
+
+      begin_op();
+      ilock(f->ip);
+      // 修改 buffer，后续走日志系统
+      if ((r = writei(f->ip, 1, addr + i, f->off, n1)) > 0)
+        f->off += r; // 更新偏移量
+      iunlock(f->ip);
+      end_op(); // 结束一次事务，如果是最后一个 syscall 就开始提交事务
+
+      if(r != n1){
+        // error from writei
+        break;
+      }
+      i += r;
+    }
+    ret = (i == n ? n : -1);
+  } else {
+    panic("filewrite");
+  }
+
+  return ret;
+}
+```
+
+## fs syscall
+
+最终操作系统肯定还是通过 FS syscall 来串联起我们讲过的所有层的内容，我们来具体看看几个 syscall 是怎么工作的。
+
+### sys_link
+
+sys_link 用来给同一个文件再起一个名字，比如现在有 `a.txt` 这个文件，通过运行命令 `link a.txt b.txt` 就创建出来了 `b.txt` 这个新的名字，两个文件名都指向同一个 inode，也就是我们常说的**创建硬链接**。
+
+底层原理就是创建一个新的目录项 dirent，name 为新的名字，inum 为旧的 inode 编号。
+
+```c
+uint64
+sys_link(void)
+{
+  // new 为新路径名，old 为已有路径名
+  char name[DIRSIZ], new[MAXPATH], old[MAXPATH];
+  struct inode *dp, *ip;
+
+  // 通过 argstr 取出调用 link 命令时传入的两个参数
+  if(argstr(0, old, MAXPATH) < 0 || argstr(1, new, MAXPATH) < 0)
+    return -1;
+
+  // 开启事务，因为涉及到修改 inode
+  begin_op();
+  // 通过 namei 解析出来 old 所指向的 inode，如果此 inode 不存在
+  if((ip = namei(old)) == 0){
+    // 结束本次事务并报错
+    end_op();
+    return -1;
+  }
+
+  ilock(ip);
+  // 如果 old 指向的 inode 是一个目录文件
+  if(ip->type == T_DIR){
+    iunlockput(ip);
+    // 目录文件不能随便地做硬链接，报错
+    end_op();
+    return -1;
+  }
+
+  // 确定 inode 为普通文件后，让其链接数+1，说明又多了一个目录项引用这个 inode
+  ip->nlink++;
+  iupdate(ip);
+  iunlock(ip);
+
+  // 找到 new 的父目录，name 保存最后一段名字
+  // 比如 /a/b/c.txt，那么 name 里面就保存 c.txt
+  // 然后返回父目录的 inode，便于在后续通过 dirlink 在父目录中插入新的 dirent
+  if((dp = nameiparent(new, name)) == 0)
+    goto bad;
+  ilock(dp);
+  // dirlink 找到一个空闲的 dirent 槽位，把 name，ip->inum 更新到父目录 inode 中
+  if(dp->dev != ip->dev || dirlink(dp, name, ip->inum) < 0){
+    iunlockput(dp);
+    goto bad;
+  }
+  iunlockput(dp);
+  iput(ip); // 将内存中 inode 的变化写入到磁盘，走日志系统
+
+  end_op(); // 提交日志
+
+  return 0;
+
+bad:
+// 失败时的回滚操作
+  ilock(ip);
+  ip->nlink--;
+  iupdate(ip);
+  iunlockput(ip);
+  end_op();
+  return -1;
+}
+```
+
+这里区分一下硬链接和软链接，**硬链接**我们刚刚说了，就是让一个新的路径名 name 指向一个以存在的文件的 inode，多个 name 可以指向同一个 inode，删除一个 name 不会影响其它 name，这个 inode 通常就是一个普通文件。
+
+**软链接**通常是指一个 name 指向一个特殊的 inode，这个 inode 的内容**不是普通的文件内容，而是一个路径字符串（比如 /home/user/hello.txt)，操作系统再根据这个路径字符串找到最终的 inode**。因为软链接存的是路径，它的使用更加灵活。
+
+### sys_open
+
+我们先来看看 create 这个函数，它的作用是把**创建新文件**时的一整套建文件流程封装起来的函数。这里的 sys_open 以及下面的 sys_mkdir 都会调用它
+
+```c
+static struct inode*
+create(char *path, short type, short major, short minor)
+{
+  struct inode *ip, *dp;
+  char name[DIRSIZ]; // 用来存放路径中的最后一部分
+
+  // 解析出来父目录 inode 和路径最后一部分
+  if((dp = nameiparent(path, name)) == 0)
+    return 0;
+
+  // 锁住父目录
+  ilock(dp);
+
+  // 检查父目录 dirent 中是否已经存在了该 name
+  if((ip = dirlookup(dp, name, 0)) != 0){
+    iunlockput(dp);
+    ilock(ip);
+    if(type == T_FILE && (ip->type == T_FILE || ip->type == T_DEVICE))
+      return ip;
+    iunlockput(ip);
+    return 0;
+  }
+
+  // 分配一个新的磁盘 inode，返回它在内存中的副本
+  if((ip = ialloc(dp->dev, type)) == 0)
+    panic("create: ialloc");
+
+  // 初始化 inode
+  ilock(ip);
+  ip->major = major;
+  ip->minor = minor;
+  ip->nlink = 1;
+  iupdate(ip);
+
+  // 如果新建的 inode 是目录
+  if(type == T_DIR){ 
+    dp->nlink++; // 让父目录 inode 链接数+1，因为后续通过 .. 指向父目录
+    iupdate(dp);
+    
+    // 为新的目录 inode 创建两个硬链接，"." 指向自己，".." 指向父目录
+    if(dirlink(ip, ".", ip->inum) < 0 || dirlink(ip, "..", dp->inum) < 0)
+      panic("create dots");
+  }
+
+  // 再创建一个硬链接将自己的 name 挂载到父目录中
+  if(dirlink(dp, name, ip->inum) < 0)
+    panic("create: dirlink");
+
+  iunlockput(dp);
+
+  return ip;
+}
+```
+
+sys_open 用来打开一个文件，并为打开文件的那个进程 p 返回一个 fd，其核心思路就是通过路径 path 解析出来目标 inode，然后创建 file 对象和 fd 索引，让 file 指向 inode 并返回 fd，用来找到 file
+
+```c
+// 辅助函数，用来分配一个 fd
+static int
+fdalloc(struct file *f)
+{
+  int fd;
+  struct proc *p = myproc();
+
+  // 遍历进程 p 的 ofile 列表，找到一个空的槽位，填上传入的 file，返回索引 fd
+  for(fd = 0; fd < NOFILE; fd++){
+    if(p->ofile[fd] == 0){
+      p->ofile[fd] = f;
+      return fd;
+    }
+  }
+  return -1;
+}
+
+uint64
+sys_open(void)
+{
+  char path[MAXPATH];
+  int fd, omode;
+  struct file *f;
+  struct inode *ip;
+  int n;
+
+  // 通过 argstr 去参数获得路径 path 和打开模式 omode
+  if((n = argstr(0, path, MAXPATH)) < 0 || argint(1, &omode) < 0)
+    return -1;
+
+  // 开启事务，因为打开文件可能会创建新文件，修改目录项等
+  begin_op();
+
+  // 如果带 O_CREATE
+  if(omode & O_CREATE){
+    // 通过 create 创建普通文件
+    ip = create(path, T_FILE, 0, 0);
+    if(ip == 0){
+      end_op();
+      return -1;
+    }
+    // 否则只做查找
+  } else {
+    if((ip = namei(path)) == 0){
+      end_op();
+      return -1;
+    }
+    ilock(ip);
+    // 如果找到目录，不能通过写模式打开
+    if(ip->type == T_DIR && omode != O_RDONLY){
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
+  }
+
+  // 如果是设备文件，检查是否合法
+  if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
+    iunlockput(ip);
+    end_op();
+    return -1;
+  }
+
+  // 通过 filealloc 和 fdalloc 分配新的 file 对象和 fd
+  if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
+    if(f)
+      fileclose(f);
+    iunlockput(ip);
+    end_op();
+    return -1;
+  }
+
+  // 用底层对象数据填充 file 
+  if(ip->type == T_DEVICE){
+    f->type = FD_DEVICE;
+    f->major = ip->major;
+  } else {
+    f->type = FD_INODE;
+    f->off = 0;
+  }
+  f->ip = ip; // 非常关键的一步，让 file 和底层的 inode 对象建立联系
+  f->readable = !(omode & O_WRONLY);
+  f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
+
+  if((omode & O_TRUNC) && ip->type == T_FILE){
+    itrunc(ip);
+  }
+
+  iunlock(ip);
+  end_op();
+
+  return fd;
+}
+```
+
+### sys_mkdir
+
+sys_mkdir 相当于对核心的 create 函数做了一层薄封装，通过 create 分配新 inode，初始化目录 inode，创建 . 和 .. 把这个新目录挂到父目录里
+
+```c
+uint64
+sys_mkdir(void)
+{
+  char path[MAXPATH];
+  struct inode *ip;
+
+  begin_op();
+  if(argstr(0, path, MAXPATH) < 0 || (ip = create(path, T_DIR, 0, 0)) == 0){
+    end_op();
+    return -1;
+  }
+  iunlockput(ip);
+  end_op();
+  return 0;
 }
 ```
