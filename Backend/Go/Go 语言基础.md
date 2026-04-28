@@ -766,3 +766,20 @@ fmt.Println(len(s)) // 6，因为一个中文字符占三个字节
 s2 := "hello"
 fmt.Println(len(s2)) // 5，因为一个英文字符占一个字节
 ```
+
+# 接口型函数
+
+```go
+// 一个接口
+type Handler interface {
+	ServeHTTP(ResponseWriter, *Request)
+}
+
+// 一个函数类型
+type HandlerFunc func(ResponseWriter, *Request)
+
+// 为这个函数类型实现接口
+func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
+	f(w, r)
+}
+```
