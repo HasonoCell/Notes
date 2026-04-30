@@ -79,16 +79,22 @@ struct nsproxy {
 
 ```
 
-可以看见，Namespace 本身是静态的数据结构，那么当子命名空间调用 syscall 的时候 Namespace 到底是如何隔离的呢，来看下面这个例子：
+可以看见，Namespace 本身是静态的数据结构，那么当子命名空间调用 syscall 的时候 Namespace 到底是如何隔离的呢，来看下面这个例子。当容器里的 Nginx 进程调用 `getpid()` 这个 syscall 想获取自己的 PID 时：
 
-当容器里的 Nginx 进程调用 `getpid()` 这个 Syscall 想获取自己的 PID 时，底层发生了什么？
-
-1. **发生 Trap**：Nginx 执行 `ecall` 或 `int 0x80`，陷入内核态。
+1. **发生 Trap**：Nginx 执行 `ecall` 或 `int 0x80`，CPU 陷入内核态。
     
 2. **内核接管**：内核找到当前正在运行的进程的 `task_struct`。
     
-3. **查 Namespace 映射**：内核**不是**直接把 `task_struct->pid`（比如 24567）扔回去。相反，内核会顺着 `task_struct->nsproxy->pid_ns` 找过去。
+3. **查 Namespace 映射**：内核**不是**直接把 `task_struct->pid`（比如 8080）返回回去。相反，内核会顺着 `task_struct->nsproxy->pid_ns` 找过去。
     
-4. **视角转换**：内核发现这个进程在一个独立的 PID Namespace 里，并且在这个 Namespace 的映射表里，真实的 `24567` 对应的虚拟编号是 `1`。
+4. **视角转换**：内核发现这个进程在一个独立的 PID Namespace 里，并且在这个 Namespace 的映射表里，真实的 PID `8080` 对应的虚拟 PID 是 `1`。
     
-5. **返回假象**：内核把 `1` 返回给 Nginx。Nginx 开心地以为自己是系统的老大哥。
+5. **返回虚拟 PID**：内核把 `1` 返回给 Nginx。
+
+这里可能会有疑问：**为什么 kernel 不直接返回进程 pid，还需要查一遍 nsproxy 呢？** 这是因为为了支持 Namespace（尤其是 PID Namespace 可以一层套一层，比如宿主机跑 Docker，Docker 里还能再跑 Docker），一个进程不能只有一个 PID 了，它在不同的层级得有不同的编号。现在，当调用 `getpid()` 时，内核不再直接读那个单一的整数了，其逻辑变成了这样：
+
+1. **先定位你是谁**：内核找到这个进程的特殊结构体（在源码里叫 `struct pid`，这已经不是个单纯的数字了，而是一个对象）。这个对象里存着一个**数组**，记录了你在每一层 Namespace 里的编号。比如：`[层级0(宿主机): 8080, 层级1(容器A): 1]`
+        
+2. **再看你在哪层空间**：这时候，内核就**必须**去查该进程的 `nsproxy` 了。它查这个是为了确认这个进程目前到底是在哪一层的
+    
+3. **按层级取值**：比如内核发现该进程在层级 1 的 PID Namespace 里。于是，内核就从上面那个数组里，把层级1对应的那个 PID 数字 `1` 抽出来，作为返回值。
