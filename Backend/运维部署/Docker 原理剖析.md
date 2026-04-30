@@ -79,7 +79,19 @@ struct nsproxy {
 
 ```
 
-可以看见，Namespace 本身是静态的数据结构，那么当子命名空间调用 syscall 的时候 Namespace 到底是如何隔离的呢，来看下面这个例子。当容器里的 Nginx 进程调用 `getpid()` 这个 syscall 想获取自己的 PID 时：
+可以看见，namespace 本身是静态的数据结构，接下来我们从“如何创建”和“如何运行”来看看 namespace 在 kernel 中时如何运行的。
+
+## 如何创建 namespace
+
+主要是通过两个 syscall：
+
+- **方法一**：调用 `clone` 这个 syscall。内核在复制进程时，为新进程分配新 `task_struct` 的同时，调用 `create_new_namespaces()` 分配全新的 `nsproxy`。
+    
+- **方法二**：调用 `unshare` 这个 syscall。不创建新进程，直接剥离当前进程旧的 `nsproxy`，换上新的。
+
+## namespace 如何运行
+
+那么当子 namespace 调用 syscall 的时候是如何工作的呢，来看下面这个例子。当容器里的 Nginx 进程调用 `getpid()` 这个 syscall 想获取自己的 PID 时：
 
 1. **发生 Trap**：Nginx 执行 `ecall` 或 `int 0x80`，CPU 陷入内核态。
     
