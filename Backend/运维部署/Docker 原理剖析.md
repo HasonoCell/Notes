@@ -30,6 +30,8 @@
 **虚拟机**通过底层的 Hypervisor（或者说 VMM），将物理机的计算资源（CPU，内存，网卡，磁盘等）实现隔离，通过虚拟化硬件，实现在一台物理机上运行多个 Kernel。虚拟机的优点是**隔离性强**，因为 OS Kernel 是不同的，但缺点就是**启动慢且资源占用大**。
 **容器**前面说了，本质上就是一个普通的进程，所以多个容器是**共享 Kernel** 的，这是与虚拟机最根本的区别。容器的优点就是**启动快且资源占用小**，但是缺点就是**隔离性一般**，会有逃逸容器的情况出现。
 
+还有一个我一直很疑惑的问题是，容器既然不同于虚拟机，是共享宿主机 Kernel 的，那为啥我们经常在使用 Ubuntu，CentOS，Alpine 这些容器，难道这些容器中是真的运行了对应 OS 的 Kernel 吗？**显然不是！** 我们知道，一个 OS 分为了两部分：kernel space 和 user space。我们运行一个所谓的 Ubuntu 容器，这个容器中拥有的只有 Ubuntu 的 user space 的部分。它包含了 Ubuntu 的包管理器 `apt`、`bash` 和文件目录结构，但绝不包含 Linux Kernel。这个容器启动后，它实际上是拿着 Ubuntu 的用户态工具，去调用宿主机的内核。比如你在一个内核版本是 5.15 的 Ubuntu 宿主机上跑一个 Alpine 容器，在容器中启动的 shell，是 Alpine 的 user space 提供的 shell 工具，运行 `uname -r` 查看当前运行的内核版本，会发现是 5.15，而不会是任何 Alpine 的内核版本。
+
 # Namespace 到底是啥
 
 Namespace 是 Linux 内核提供的一种**底层资源隔离机制**，它通过为进程建立独立的系统全局资源视图，让被隔离的进程产生“自己独占了整个操作系统”的错觉。Namespace 其实很像操作系统的第二套 Page Table。Page Table 负责把虚拟内存映射到物理内存；Namespace 负责把虚拟的全局资源（如虚拟的 PID=1 的进程）映射到真实的全局资源（如真实的 PID=5678 的进程）。
@@ -109,97 +111,82 @@ struct nsproxy {
 
 这组 Namespace 负责修改进程对文件目录和机器名称的认知。
 
-- **Mount Namespace (文件系统挂载点)**
+**Mount Namespace (文件系统挂载点)**：隔离文件系统的挂载点（Mount Points），让容器拥有一棵完全独立的目录树。举个例子，如果 Docker 启动了一个容器（Alpine OS），并想要其拥有一个完全独立的文件系统，流程是这样的：
+
+1. **开辟新空间**：调用 `clone(CLONE_NEWNS)`，`CLONE_NEWNS` 是 mount namespace 的 flag 参数，此时容器拷贝了宿主机的挂载树，看到的依然是宿主机的 `/`
     
-    - **底层子系统**：虚拟文件系统 (VFS)。
-        
-    - **它的欺骗**：让进程看到一个完全独立的 `/` 根目录。你在这个目录里 `mount` 一个 U 盘，外面的宿主机根本看不见。
-        
-    - **本质区别**：它是最早的 Namespace，也是隔离**物理存储视野**的唯一手段。
-        
-- **UTS Namespace (主机名与域名)**
+2. **挂载镜像**：Docker 引擎把 Alpine 的根文件系统（Rootfs，包含 bin, lib, usr 等目录）挂载到容器视野内的一个临时目录
     
-    - **底层子系统**：系统信息 (`struct new_utsname`)。
-        
-    - **它的欺骗**：让进程敲下 `hostname` 时，看到的是容器 ID（比如 `a1b2c3`），而不是宿主机的名字（比如 `ubuntu-server`）。
-        
-    - **本质区别**：极其轻量，仅仅为了让容器内的应用日志、网络服务有一个独立的网络标识符。
-        
+3. **替换目录**：容器内部调用 `pivot_root` 这个 syscall，将容器当前的根目录 `/` 切换到刚才挂载的 Alpine 目录，并把原来宿主机的根目录移动到一个不起眼的临时文件夹下
+    
+4. **清除痕迹**：容器再调用 `umount`，把那个包含宿主机旧根目录的临时文件夹彻底卸载掉
+    
+
+此时，容器中宿主机的 `/var`、`/home` 全都不见了，只剩一个完全属于 Alpine Linux 自己的目录树。
+
+**UTS Namespace (主机名与域名)**：主要就是为了隔离宿主机的主机名（hostname）。如果没有 UTS Namespace，比如说当容器里的进程尝试调用 `sethostname()` 系统调用来修改自己的主机名时，它会直接把宿主机的主机名给改了。这会导致宿主机上的日志系统、网络身份认证瞬间混乱。
 
 ### 连接与通信的隔离 (进程与谁通信)
 
 这组 Namespace 负责切断进程与外界的默认数据交换渠道。
 
-- **Network Namespace (网络栈)**
-    
-    - **底层子系统**：网络协议栈、网卡设备、路由表、防火墙 (Netfilter)。
+**Network Namespace (网络栈)**：最复杂的部分，会在子命名空间复制出一整个 TCP/IP 网络栈，隔离网络 Socket 通信，太复杂了，先跳过......
         
-    - **它的欺骗**：没收宿主机的物理网卡，给进程发一张虚拟网卡（`eth0`），并提供一套干净的端口（所以你能同时跑 10 个监听 80 端口的 Nginx）。
-        
-    - **本质区别**：它是所有 Namespace 里代码最庞大、逻辑最复杂的一个，因为它几乎复制了整个 Linux 的网络子系统视图。
-        
-- **IPC Namespace (进程间通信)**
-    
-    - **底层子系统**：System V IPC、POSIX 消息队列、共享内存。
-        
-    - **它的欺骗**：如果两个进程不在同一个 IPC 空间，它们就算知道对方的内存地址，内核也会拦截它们通过共享内存交换数据的行为。
-        
-    - **本质区别**：专门防范进程绕过网络，直接在内存层面上进行非法的数据窃取或破坏。
+**IPC Namespace (进程间通信)**：主要就是将容器中的进程和宿主机的进程间通信进行隔离吧，比如 System V IPC（消息队列、信号量），管道 Pipe 和 POSIX 共享内存这些 IPC 方式。没有 IPC Namespace 时，容器 A 里的恶毒程序，可以去暴力猜测宿主机或其他容器的共享内存 ID，一旦猜中，就能直接读取甚至篡改别的进程在内存中的敏感数据。
         
 
-### 4. 环境与时间的隔离 (较新的特性)
+### 环境与时间的隔离 (较新的特性)
 
-- **Cgroup Namespace (资源视图)**
-    
-    - **它的欺骗**：隐藏宿主机的真实资源限制树。进程去读 `/sys/fs/cgroup` 时，只能看到自己被分配的那点资源，防止容器内的恶意程序去探测或修改全局的 CPU/内存限制。
-        
-- **Time Namespace (系统时间)**
-    
-    - **它的欺骗**：允许容器拥有独立的时间线（偏移量）。宿主机是 2026 年，你可以让容器活在 2020 年。
-        
+**Cgroup Namespace (资源视图)**：隐藏宿主机的真实资源限制树。进程去读 `/sys/fs/cgroup` 时，只能看到自己被分配的那点资源，防止容器内的恶意程序去探测或修改全局的 CPU 或内存限制。
 
----
+**Time Namespace (系统时间)**：允许容器拥有独立的时间线（偏移量）。比如宿主机是 2026 年，容器可以活在 2020 年。
 
-### 💡 终极思考：为什么需要这种“区别”与“解耦”？
-
-理解了它们的区别，你就能明白 Kubernetes (K8s) 最伟大的设计之一：**Pod**。
-
-在 Docker 中，通常是一个容器集齐了所有的 Namespace，把自己裹得严严实实。
-
-但在 K8s 中，一个 Pod 里面可能跑着三个容器（比如一个核心业务 Go 程序，一个收集日志的副进程，一个做网络代理的副进程）。K8s 是怎么让它们完美协作的？
-
-**答案就是：打破某些 Namespace 的界限！**
-
-K8s 会这样设置这三个容器的底层参数：
-
-1. **PID/Mount Namespace：隔离**。（大家各有各的代码目录，各有各的进程树，互不干扰）。
-    
-2. **Network/IPC Namespace：共享！**。K8s 让这三个容器的 `task_struct->nsproxy->net_ns` 指向**同一个**网络命名空间结构体。
-    
-
-**结果就是**：这三个容器就像住在三个独立卧室（Mount 隔离）的人，但他们共用同一个客厅的电话机和路由器（Network 共享）。业务程序监听了 `localhost:8080`，旁边的代理容器直接向 `localhost:8080` 发数据就能通！
-
-这就是 Linux 内核把 Namespace 拆分成不同类型的终极魅力：**它们像乐高积木一样，你可以根据架构需求，极其精细地控制到底要给进程戴上哪几副“VR 眼镜”，摘下哪几副。**
-
-接下来我们从“如何创建”和“如何运行”来看看 namespace 在 kernel 中时如何运行的。
 
 ## 如何创建 namespace
 
 主要是通过两个 syscall：
 
-- **方法一**：调用 `clone` 这个 syscall。内核在复制进程时，为新进程分配新 `task_struct` 的同时，调用 `create_new_namespaces()` 分配全新的 `nsproxy`。
+- **方法一**：调用 `clone` 这个 syscall。内核在复制进程时，为新进程分配新 `task_struct` 的同时，调用 `create_new_namespaces()` 分配全新的 `nsproxy`。比如我们通过 Go 语言来调用一下 clone 这个 syscall
+
+```go
+package main
+
+import (
+	"os"
+	"os/exec"
+	"syscall"
+	"github.com/fatih/color"
+)
+
+func main() {
+	cmd := exec.Command("sh")
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWIPC |
+			syscall.CLONE_NEWPID | syscall.CLONE_NEWNS |
+			syscall.CLONE_NEWUSER | syscall.CLONE_NEWNET,
+	}
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	
+	if err := cmd.Run(); err != nil {
+		panic(err)
+	}
+}
+
+```
     
 - **方法二**：调用 `unshare` 这个 syscall。不创建新进程，直接剥离当前进程旧的 `nsproxy`，换上新的。
 
 ## namespace 如何运行
 
-那么当子 namespace 调用 syscall 的时候是如何工作的呢，来看下面这个例子。当容器里的 Nginx 进程调用 `getpid()` 这个 syscall 想获取自己的 PID 时：
+那么当子 namespace 调用 syscall 的时候是如何工作的呢，来看下面这个 pid namesapce 的例子。当容器里的 Nginx 进程调用 `getpid()` 这个 syscall 想获取自己的 PID 时：
 
 1. **发生 Trap**：Nginx 执行 `ecall` 或 `int 0x80`，CPU 陷入内核态。
     
 2. **内核接管**：内核找到当前正在运行的进程的 `task_struct`。
     
-3. **查 Namespace 映射**：内核**不是**直接把 `task_struct->pid`（比如 8080）返回回去。相反，内核会顺着 `task_struct->nsproxy->pid_ns` 找过去。
+3. **查 Namespace 映射**：内核**不是**直接把 `task_struct->pid` 这个字段（比如 8080）返回回去。相反，内核会顺着 `task_struct->nsproxy->pid_ns` 找过去。
     
 4. **视角转换**：内核发现这个进程在一个独立的 PID Namespace 里，并且在这个 Namespace 的映射表里，真实的 PID `8080` 对应的虚拟 PID 是 `1`。
     
@@ -212,3 +199,9 @@ K8s 会这样设置这三个容器的底层参数：
 2. **再看你在哪层空间**：这时候，内核就**必须**去查该进程的 `nsproxy` 了。它查这个是为了确认这个进程目前到底是在哪一层的
     
 3. **按层级取值**：比如内核发现该进程在层级 1 的 PID Namespace 里。于是，内核就从上面那个数组里，把层级1对应的那个 PID 数字 `1` 抽出来，作为返回值。
+
+## nsproxy / namesapce 到底是啥
+
+`nsproxy` 本质就是一个路由器，用来在进程和操作系统全局资源之间添加一层代理，进程所发起的所有对资源的请求，都会到 nsproxy 走一层代理转发，再去访问系统全局资源。比如想访问全局 PID，那就通过 nsproxy->pid_ns 来导航到全局 PID 资源。
+
+而 `namespace`，就是为一个进程本身（调用 unshare），或者创建出来的子进程（调用 clone），改变它的 usproxy，从而阻断它对真正的系统全局资源的访问，使其访问到的是容器引擎隔离虚拟出来给它的，比如 pid namespace，那就是让子进程想访问的全局 pid 资源，不是真正的 8080，而是 1。
