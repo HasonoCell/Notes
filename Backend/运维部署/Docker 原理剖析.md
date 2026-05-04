@@ -111,8 +111,8 @@ struct nsproxy {
 
 ---
 
-**User Namespace (用户与组)**：让进程以为自己是 `root (UID 0)`，在容器中拥有最高的执行权限。它是唯一一个能跨越“特权边界”的 Namespace。普通用户创建其他 Namespace 通常需要 root 权限，但引入 User Namespace 后，普通用户可以在自己的 User Namespace 里映射成 root，然后再去创建其他的 Namespace（这是无根容器 Rootless Docker 的核心基石）。
-        
+**User Namespace (用户与组)**：让进程以为自己是 `root (UID 0)`，在容器中拥有最高的执行权限。它是唯一一个能跨越“特权边界”的 Namespace。普通用户创建其他 Namespace 通常需要 root 权限，但引入 User Namespace 后，普通用户可以在自己的 User Namespace 里映射成 root，然后再去创建其他的 Namespace
+
 
 ### 空间与位置的隔离 (进程在哪)
 
@@ -157,7 +157,7 @@ VFS 强制规定了所有接入 Linux 的具体文件系统，必须将其底层
 
 VFS 采用动态分发机制，在 VFS 的 `struct file` 结构体中，包含一个函数指针表 `struct file_operations *f_op`。 当具体文件系统（例如 Ext4）被加载时，它必须将自己特有的读取函数（如 `ext4_file_read`）的地址，赋值给这个 `f_op->read` 指针。当用户层发起 `read()` 系统调用时，请求进入 VFS 层的通用函数 `vfs_read()`。`vfs_read()` 只负责调用目标 file 的函数表中特定的 read 函数 `file->f_op->read(...)`。执行流通过指针跳转，精准下发到对应的具体文件系统驱动中。
 
-所以 **Mount** 这个概念，就是指就是将一个实现了 VFS 标准接口的具体文件系统实例（即它的 `super_block` 和根 `inode`），绑定到 VFS 全局目录树中的某一个特定的 `dentry` 节点（即挂载点）上。比如将一个 Ext4 fs 的 U 盘插入到 linux os 的主机上，如果这个主机的 linux 环境是最纯净的 linux 环境，没有图形界面，也没有任何的自动化服务，当插入 U 盘核在 `/dev` 目录（设备文件目录）下生成 U 盘的文件节点 `/dev/sdb1` ，但此时 VFS 还不能找到访问到 U 盘中存储的内容，必须**手动执行 mount 系统调用：`mount -t ext4 /dev/sdb1 /mnt/usb`** - VFS 才会在内存的挂载表中，将主文件系统的 `/mnt/usb` 目录结构（`dentry`）与 `/dev/sdb1` 的底层 Ext4 驱动绑定在一起，进程才能通过 `/mnt/usb` 访问到 U 盘中的数据。
+所以 **Mount** 这个概念，就是指就是将一个实现了 VFS 标准接口的具体文件系统实例（即它的 `super_block` 和根 `inode`），绑定到 VFS 全局目录树中的某一个特定的 `dentry` 节点（即挂载点）上。比如将一个 Ext4 fs 的 U 盘插入到 linux os 的主机上，如果这个主机的 linux 环境是最纯净的 linux 环境，没有图形界面，也没有任何的自动化服务，当插入 U 盘核在 `/dev` 目录（设备文件目录）下生成 U 盘的文件节点 `/dev/sdb1` ，但此时 VFS 还不能找到访问到 U 盘中存储的内容，必须**手动执行 mount 系统调用：`mount -t ext4 /dev/sdb1 /mnt/usb`**，VFS 才会在内存的挂载表中，将主文件系统的 `/mnt/usb` 目录结构（`dentry`）与 `/dev/sdb1` 的底层 Ext4 驱动绑定在一起，进程才能通过 `/mnt/usb` 访问到 U 盘中的数据。
 
 ---
 
