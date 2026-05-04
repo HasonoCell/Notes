@@ -264,4 +264,127 @@ func main() {
 
 # Cgroups 到底是啥
 
-如果说 Namespaces 解决的是“进程能看到什么资源”的问题（限制访问范围），那么 Cgroups 解决的就是“进程能使用多少资源”的问题（限制物理开销）。
+如果说 Namespaces 解决的是“进程能看到什么资源”的问题（限制访问范围），那么 Cgroups 解决的就是“进程能使用多少资源”的问题（限制物理开销）。它在物理层面的本质是：在操作系统的底层资源分配链路（如内存分配器、CPU 调度器、块设备 I/O 调度层）中，强制注入一套**基于特定数据结构的验证与拦截逻辑**。通过将一组进程（进程控制块 `task_struct`）与一组资源阈值数据进行指针绑定，使得当进程触发资源分配的系统调用或底层硬件中断时，内核必须先校验该阈值，从而决定是放行、限流还是直接物理终止进程。
+
+```c
+
+struct task_struct {
+    // ... 省略 n 个字段 ...
+    
+    /* namespaces 代理指针 (视图隔离) */
+    struct nsproxy *nsproxy;
+
+    /* cgroups 代理指针 (资源限制) */
+#ifdef CONFIG_CGROUPS
+    struct css_set __rcu *cgroups;    /* <--- 核心：指向 Cgroup 子系统状态集合的指针 */
+    struct list_head cg_list;
+#endif
+    // ...
+};
+
+```
+
+`struct css_set` (Cgroup Subsystem State Set) 这个结构体的作用是将一个进程在不同的子系统中的具体状态指针打包在一起，比如一个进程可以属于 `memory` 的 A 组，同时属于 `cpu` 的 B 组，那么 `css_set` 就记录了整体的信息。
+
+Cgroups 一个极其重要的点是，它是基于**伪文件系统**实现的，这和平常认为的文件系统就是用来管理磁盘中的数据不太一样。在前面我们说过 VFS 是一个抽象层，用来管理所有不同种类的文件系统，它定义了 `inode`、`dentry`、`super_block` 和 `file` 这四个对象。
+
+- **真实文件系统 (如 ext4, XFS)：** 这些系统的底层驱动负责将 VFS 的对象，映射到物理块设备（如磁盘的扇区）上。平常写入的数据，最终被持久化到了硬盘介质中。
+- **伪文件系统 (如 cgroupfs)：** 这些系统的底层驱动，将 VFS 的对象映射到了内核的内存数据结构（RAM）上。它们完全不连接任何物理存储介质。当对这些文件进行读写时，实际上是在直接读取或修改 kernel space 里的变量。
+
+Cgroups 不仅要考虑其功能上的实现，即如何通过 Controller 实现对进程资源的控制，还要考虑如何将其提供给 user space 中的进程（比如容器引擎），使其可以去配置这些底层的限制参数，并关联具体的进程。Cgroups 并没有采取提供诸如 `sys_create_cgroup(name)` 这样的系统调用接口，而是复用现有的 VFS 体系，编写了一个名为 `cgroupfs` 的驱动模块，并将其挂载到 `/sys/fs/cgroup` 目录。VFS 层会拦截标准的 POSIX 文件操作（也就是 open，read 这些系统调用），并将其翻译为对内核 Cgroup 数据结构的操作。
+
+来看一个通过最简单的 shell 操作 Cgroups 的过程：
+
+1. 创建目录：用户态执行 `mkdir /sys/fs/cgroup/my_container`，触发 `sys_mkdir` 系统调用。 `cgroupfs` 驱动捕获此调用。它不会去硬盘上创建目录，而是调用 `kmalloc()` 在物理内存中分配一个全新的 `struct cgroup` 结构体，并初始化其内部的 c groups 和 task_struct 的双向链表。最后，在 VFS 内存树中生成对应的 `dentry`，让 user space 能够看到这个目录。
+2. 写入文件：用户态执行 `echo 100000 > /sys/fs/cgroup/my_container/cpu.max`，触发 `sys_write` 系统调用。`cgroupfs` 驱动捕获此调用。它提取传入的字符串 `"100000"`，将其转换为整型数据。然后，顺着该节点绑定的 CPU  Controller 指针，找到底层的 `cfs_bandwidth` 结构体，直接将其内部的 `quota` 变量的值覆写为 100000。
+3. 写入 PID：用户态执行 `echo 8080 > /sys/fs/cgroup/my_container/cgroup.procs`，触发 `sys_write` 系统调用。 `cgroupfs` 驱动将字符串 `"8080"` 转换为整数，在内核的全局 PID 映射表中查找到 8080 目标进程的 `task_struct` 内存地址。随后，直接修改该 `task_struct` 中的 `css_set` 指针，将其重新指向当前目录对应的 `struct cgroup` 实例。
+
+## Cgroups 的分类
+
+与 Namespace 分为 PID、Mount、Network 等类型一样，Cgroups 框架根据所限制的物理硬件资源不同，被划分为多个独立的子系统 Subsystem，或者在 Cgroups v2 中更新的叫法是控制器 Controller，体现对资源的控制。核心的控制器包括：
+
+1. `cpu`：限制进程集合在 CPU 上的执行时间片配额（与 CFS 调度器强绑定）。
+2. `cpuset`：将进程集合的执行严格绑定（Pin）到特定的物理 CPU 核心以及 NUMA 内存节点上。
+3. `memory`：限制进程集合能够申请的物理内存页数量和 Swap 空间大小。若超限，内核直接针对该 Cgroup 触发 OOM Killer。
+4. `blkio` (在 Cgroup V2 中称为 `io`)：限制进程集合对块设备（如物理磁盘）的读写吞吐量（BPS，字节/秒）和读写频率（IOPS，操作数/秒）。
+5. `pids`：限制该组内允许存在的最大 `task_struct` 进程数量，这是防止由于恶意代码执行 Fork Bomb（进程炸弹）导致系统 PID 资源耗尽。
+6. `freezer`：提供挂起（Suspend）和恢复（Resume）Cgroup 内所有进程执行状态的能力。
+7. `devices`：控制进程集合对特定设备文件节点（如 `/dev/null`, `/dev/sda`）的读取、写入或创建（mknod）的访问权限。
+    
+## Controller 的实现机制
+
+通过 Memory Controller 来看看 Controller 到底是如何实现的。当容器内的进程调用 `malloc` 分配内存并触发写操作时：
+
+1. 触发缺页异常 (Page Fault)：硬件 MMU 发现虚拟地址没有映射物理内存，触发硬件中断，执行流陷入内核的缺页异常处理函数 `handle_mm_fault()`。
+2. 物理页分配请求：内核准备取出一个 4KB 的物理页。
+3. Cgroup 拦截检查 (`mm/memcontrol.c`)：在真正分配之前，内核代码会调用 `mem_cgroup_try_charge()` 函数。
+4. 通过当前执行进程的 `task_struct -> cgroups (css_set) -> memory_css` 找到对应的 `struct mem_cgroup` 实例。    
+5. 内核原子性地读取该 `mem_cgroup` 里的 `memory.current`（当前已使用字节数）并加上 4096（4KB）。将其与 `memory.max`（最大允许阈值）进行比较。
+6. 如果通过，更新 `memory.current` 计数器，完成物理页分配，返回用户态；如果拒绝，拦截分配动作。内核会尝试回收该 Cgroup 内的缓存页。如果回收失败，直接触发针对该特定 Cgroup 的局部 OOM Killer，向该进程发送 `SIGKILL` 信号将其物理终止。
+
+## 真实世界
+
+直接来看看我本机的 cgroups 是什么情况，我们进入到 /sys/fs/cgroup 这个目录下，执行 ls：
+
+```text
+
+hasono@ubuntu:/sys/fs/cgroup$ ls -al
+total 0
+drwxr-xr-x  6 root root 0 May  1 14:31 .
+drwxr-xr-x 14 root root 0 May  4 14:42 ..
+drwxr-xr-x  2 root root 0 May  4 14:42 .lxc
+-r--r--r--  1 root root 0 May  4 14:42 cgroup.controllers
+-r--r--r--  1 root root 0 May  4 14:42 cgroup.events
+-rw-r--r--  1 root root 0 May  4 14:42 cgroup.freeze
+--w-------  1 root root 0 May  4 14:42 cgroup.kill
+-rw-r--r--  1 root root 0 May  4 14:42 cgroup.max.depth
+-rw-r--r--  1 root root 0 May  4 14:42 cgroup.max.descendants
+-rw-r--r--  1 root root 0 May  4 14:42 cgroup.procs
+-r--r--r--  1 root root 0 May  4 14:42 cgroup.stat
+-r--r--r--  1 root root 0 May  4 14:42 cgroup.stat.local
+-rw-r--r--  1 root root 0 May  1 14:32 cgroup.subtree_control
+-rw-r--r--  1 root root 0 May  4 14:42 cgroup.threads
+-rw-r--r--  1 root root 0 May  4 14:42 cgroup.type
+-rw-r--r--  1 root root 0 May  4 14:42 cpu.idle
+-rw-r--r--  1 root root 0 May  4 14:42 cpu.max
+-rw-r--r--  1 root root 0 May  4 14:42 cpu.max.burst
+-r--r--r--  1 root root 0 May  4 14:42 cpu.stat
+-r--r--r--  1 root root 0 May  4 14:42 cpu.stat.local
+-rw-r--r--  1 root root 0 May  4 14:42 cpu.weight
+-rw-r--r--  1 root root 0 May  4 14:42 cpu.weight.nice
+-rw-r--r--  1 root root 0 May  4 14:42 cpuset.cpus
+-r--r--r--  1 root root 0 May  4 14:42 cpuset.cpus.effective
+-rw-r--r--  1 root root 0 May  4 14:42 cpuset.cpus.exclusive
+-r--r--r--  1 root root 0 May  4 14:42 cpuset.cpus.exclusive.effective
+-rw-r--r--  1 root root 0 May  4 14:42 cpuset.cpus.partition
+-rw-r--r--  1 root root 0 May  4 14:42 cpuset.mems
+-r--r--r--  1 root root 0 May  4 14:42 cpuset.mems.effective
+drwxr-xr-x  2 root root 0 May  1 14:32 init.scope
+-rw-r--r--  1 root root 0 May  4 14:42 io.max
+-r--r--r--  1 root root 0 May  4 14:42 io.stat
+-r--r--r--  1 root root 0 May  4 14:42 memory.current
+-r--r--r--  1 root root 0 May  4 14:42 memory.events
+-r--r--r--  1 root root 0 May  4 14:42 memory.events.local
+-rw-r--r--  1 root root 0 May  4 14:42 memory.high
+-rw-r--r--  1 root root 0 May  4 14:42 memory.low
+-rw-r--r--  1 root root 0 May  4 14:42 memory.max
+-rw-r--r--  1 root root 0 May  4 14:42 memory.min
+-rw-r--r--  1 root root 0 May  4 14:42 memory.oom.group
+-rw-r--r--  1 root root 0 May  4 14:42 memory.peak
+--w-------  1 root root 0 May  4 14:42 memory.reclaim
+-r--r--r--  1 root root 0 May  4 14:42 memory.stat
+-r--r--r--  1 root root 0 May  4 14:42 memory.swap.current
+-r--r--r--  1 root root 0 May  4 14:42 memory.swap.events
+-rw-r--r--  1 root root 0 May  4 14:42 memory.swap.high
+-rw-r--r--  1 root root 0 May  4 14:42 memory.swap.max
+-rw-r--r--  1 root root 0 May  4 14:42 memory.swap.peak
+-r--r--r--  1 root root 0 May  4 14:42 pids.current
+-r--r--r--  1 root root 0 May  4 14:42 pids.events
+-r--r--r--  1 root root 0 May  4 14:42 pids.events.local
+-rw-r--r--  1 root root 0 May  4 14:42 pids.max
+-r--r--r--  1 root root 0 May  4 14:42 pids.peak
+drwxr-xr-x 13 root root 0 May  4 14:35 system.slice
+drwxr-xr-x+  3 root root 0 May  1 14:32 user.slice
+```
+
+可以看见这台 Ubuntu 正在运行原生的 Cgroup v2（统一层级结构），并且底层由 systemd 担任 Cgroup 的全局根管理器。在早期的 Cgroup v1 中，CPU、内存等控制器是相互独立挂载的（比如 `/sys/fs/cgroup/cpu` 和 `/sys/fs/cgroup/memory`）。但在 Cgroup v2 中所有控制器全部平铺在同一个目录下。在内存中，这代表当前目录（`/sys/fs/cgroup`）对应着一个全局唯一的根 `struct cgroup` 结构体实例。这台机器上的所有进程（`task_struct`），只能在这唯一的一棵树上被分配。
