@@ -28,9 +28,9 @@
 
 `docker exec -it <镜像名称或ID> /bin/sh` 为正在运行的容器启动一个交互式的 shell
 
-`docker stop` <镜像名称或ID> 停止正在运行的容器
+`docker stop` <容器名称或ID> 停止正在运行的容器
 
-`docker start`<镜像名称或ID> 启动正在运行的容器
+`docker start` <容器名称或ID> 启动正在运行的容器
 
 `docker build -t <创建的镜像的名字> .`根据 Dockerfile 在当前目录内创建出镜像
 
