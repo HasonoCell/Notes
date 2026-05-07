@@ -968,6 +968,8 @@ namex(char *path, int nameiparent, char *name)
 
 终于终于终于，从 buffer cache layer 一路往上来到了 file descriptor layer 了，这一层可以说就是操作系统 kernel 直接与文件系统打交道的地方。**通过将 inode，管道 pipe，设备 device 抽象成 file，实现了文件资源的统一调度和管理。**
 
+![](assets/Chapter%208：File%20System/file-20260507192036007.png)
+
 先来看看核心的 file 结构体，它表示的不是文件资源本身，而是操作这个资源的一个句柄 handle：
 
 ```c
