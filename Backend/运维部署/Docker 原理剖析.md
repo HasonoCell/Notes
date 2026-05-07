@@ -415,13 +415,13 @@ echo <pid> > /sys/fs/cgroup/my_sandbox/cgroup.procs
 
 OverlayFS 本质上是一个具体的文件系统实现，与 ext4，xfs 这些物理文件系统稍有区别的地方在于，它被称为“堆叠式文件系统（即要堆叠在一个物理文件系统上才能运行）”，不像物理文件系统一样直接操作硬件存储介质，OverlayFS 仅仅用来维护属于该文件系统的文件状态，真正对于文件的修改还得由物理文件系统来实施，而这中间都是通过 VFS 进行调度，比如 `syscall -> vfs -> overlayfs -> vfs -> ext4`。
 
-**Rootfs**，对于 Linux 系统来说包含系统运行必需的目录结构（如 `/bin`, `/etc`, `/lib`, `/var`）、命令、配置文件和驱动程序。对于容器进程来说，Rootfs 通常被称为**镜像**，镜像文件本质上就是一个包含了应用程序代码、库文件、配置和环境的压缩包，通过前面说的 Mount Namespace 将容器的根路径 `/` 隔离到镜像文件存储的目录中。
+**Rootfs**，对于 Linux 系统来说包含系统运行必需的目录结构（如 `/bin`, `/etc`, `/lib`, `/var`）、命令、配置文件和驱动程序。对于容器进程来说，Rootfs 通常被称为**镜像**，镜像文件本质上就是一个包含了应用程序代码、库文件、配置和环境的压缩包（比如 tarball），通过前面说的 Mount Namespace 将容器的根路径 `/` 隔离到镜像文件存储的目录中。
 
 OverlayFS 分为四个部分，当通过命令执行 `mount -t overlay` 系统调用时会要求四个参数（目录），即：`mount -t overlay overlay -o lowerdir=<dir1>:<dir2>,upperdir=<dir3>,workdir=<dir4> <merged_target_dir>`
 
-1. `lowerdir`：镜像层，绝对只读。如果有多个 `lowerdir`（镜像分层机制），它们会按顺序自上而下堆叠。   
+1. `lowerdir`：镜像层，绝对只读。如果有多个 `lowerdir`（镜像分层机制），它们会按顺序自上而下堆叠。
 2. `upperdir`：为当前运行的容器进程单独分配的宿主机空白目录，可读写。容器生命周期内产生的所有新增和修改，最终都会物理落盘在这个目录里。
-3. `merged`：容器的新根目录 `/`，就是挂载在这个 `merged` 目录上的。   
+3. `merged`：容器的新根目录 `/`，就是挂载在这个 `merged` 目录上的。
 4. `workdir` (工作目录)：一个隐藏的辅助目录，必须与 `upperdir` 在同一个底层的 ext4 文件系统上。它用于 OverlayFS 在执行写时复制（CoW）等复杂操作时，保证 VFS 层面文件状态修改的原子性。
 
 为了确保容器的隔离性，多个容器读镜像文件时可以直接读取 lowerdir，但是某个容器要修改镜像文件时，会先从 lowerdir 复制一个镜像文件副本到 upperdir，然后将修改写入到 upperdir 中，确保其它容器不会看见该容器的修改，这种等待修改时再复制副本的操作也就是所谓的 CoW。
