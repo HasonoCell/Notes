@@ -4,7 +4,7 @@
 先来看看 k8s 的一些核心概念
 
 * **Pod（容器组）**：K8s 中能够创建和调度的最小计算单元。一个 Pod 并不是一个容器，而是包含一个或多个紧密相关的容器。同一个 Pod 中的容器共享网络 IP 和存储卷，它们通常被部署在同一台物理机或虚拟机上（Node）。
-* **Node（节点）**：运行 K8s 工作负载的机器（可以是物理机或虚拟机）。集群（Cluster）通常由多个 Node（既包含 worker 又包含 master） 组成。
+* **Node（节点）**：运行 K8s 工作负载的机器（可以是物理机或虚拟机）。一个 Node 可以部署多个 Pod，集群（Cluster）通常由多个 Node（既包含 worker 又包含 master） 组成。
 * **Deployment（部署）**：用于声明应用的期望状态（比如“我需要这个应用同时运行 3 个副本”）。K8s 的控制器会自动监控并维持这个状态，如果某个 Pod 崩溃了，Deployment 会自动启动一个新的 Pod 来替换它。
 * **Service（服务）**：因为 Pod 是极其脆弱的（随时可能被销毁重建），它们的 IP 地址是动态变化的。Service 提供了一个统一的入口地址和负载均衡机制，让你可以稳定地访问后端的一组 Pod，而无需关心具体的 Pod IP。
 * **Namespace（命名空间）**：用于在一个物理集群中划分出多个虚拟集群。通常用来隔离不同的环境（如 `dev` 开发、`test` 测试、`prod` 生产），或者隔离不同团队的资源。
@@ -21,7 +21,7 @@ Master Node 负责全局决策、响应集群事件以及调度。
 
 Worker Node 负责真正运行容器化的应用。
 
-* **kubelet**：每个 worker node 上最重要的主管进程，接收 master node 的指令，负责管理节点上的 Pod 的生命周期，确保容器健康运行。
+* **kubelet**：每个 worker node 上最重要的主管进程，接收 master node 的指令，负责管理节点上所有 Pod 的生命周期，确保容器健康运行。
 * **kube-proxy**：维护节点上的网络规则。它实现了 K8s Service 的网络代理功能，负责将流量正确地路由和负载均衡到对应的 Pod 上。
 * **Container Runtime**：负责拉取镜像和真正运行容器的底层软件。K8s 支持多种遵循 OCI 标准的运行时，如 containerd、CRI-O 和 Docker。
 
@@ -31,7 +31,7 @@ Worker Node 负责真正运行容器化的应用。
 
 ## Pod
 
-Pod 本质上就是共享 name space 的容器组，比如我们按照下面这个配置文件 `kubectl apply -f demo-pod.yaml` 启动一个 pod：
+Pod 本质上就是共享 name space 的容器组，比如我们按照下面这个配置文件 `kubectl apply -f demo-pod.yaml` 启动一个 pod，可以通过 `kubectl get pods -w` 查看多个 pod 状态：
 
 ```yaml
 apiVersion: v1
