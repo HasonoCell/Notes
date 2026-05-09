@@ -10,6 +10,49 @@
 * **Namespace（命名空间）**：用于在一个物理集群中划分出多个虚拟集群。通常用来隔离不同的环境（如 `dev` 开发、`test` 测试、`prod` 生产），或者隔离不同团队的资源。
 * **ConfigMap 和 Secret**：用于将配置文件或敏感信息（如数据库密码、证书）与容器镜像解耦，方便统一管理和注入到 Pod 中。
 
+在一个集群之中，Deployment 主要管理集群中的内部计算资源（Pod），Service 主要对外提供一个统一的网络接口。Deployment 只保证该集群里永远有 N 个一模一样的 Pod 在运行，如果某一个 Pod 崩溃了，就自动拉起新的 Pod。在 K8s 的网络底层，Pod 是极其短命且不可靠的。每次 Deployment 重新拉起一个 Pod，底层的网络插件（CNI）都会给这个新 Pod 分配一个全新的、随机的 IP 地址。这就是为什么还需要 Service，它为集群提供一个永远不变的 IP 和端口，通过 Label 识别 Pod 并把流量分发给集群中的 Pod，实现负载均衡。
+
+```yaml
+
+# Deployment 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: my-web-app
+spec:
+    replicas: 3 # 我们声明需要 3 个 Nginx 副本
+    selector:
+        matchLabels:
+            app: nginx
+    template:
+        metadata:
+            labels:
+                app: nginx # 给这些 Pod 贴上标签，方便后面寻找
+        spec:
+            containers:
+                - name: nginx
+                  image: docker.m.daocloud.io/library/nginx:alpine
+                  ports:
+                      - containerPort: 80
+
+---
+# Service 
+apiVersion: v1
+kind: Service
+metadata:
+    name: my-web-service
+spec:
+    type: NodePort # 允许从宿主机直接访问
+    selector:
+        app: nginx # 重点：Service 会自动把流量打给所有带有 app:nginx 标签的 Pod
+    ports:
+        - port: 80
+          targetPort: 80
+          nodePort: 30080 # 我们在宿主机上暴露的端口
+
+```
+
+
 K8s 采用的是主从架构，一个集群主要分为控制平面（Master Node）和工作节点（Worker Node）两大部分。
 
 Master Node 负责全局决策、响应集群事件以及调度。
