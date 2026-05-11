@@ -70,6 +70,8 @@ Worker Node 负责真正运行容器化的应用。
 
 我们平常在 worker node 上主要就通过 `kubectl` 命令控制一个集群以及所属节点。
 
+![](assets/K8S/file-20260511115520293.png)
+
 # 一些底层原理
 
 ## Pod
