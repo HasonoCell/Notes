@@ -1,7 +1,9 @@
-- [ ] MIT 6S081
+- [x] MIT 6S081
+- [ ] CS168 / CS144
+- [ ] MIT 6824
 - [ ] CS61C
 - [ ] 7-Days-Golang
-- [ ] 容器化技术，写一个 Docker
+- [x] 容器化技术，写一个 Docker
 - [ ] K8S
 - [ ] 读一些开源 Sandbox 项目源码，比如 CubeSandbox，E2B
 - [ ] 大模型基础，模型推理/部署
