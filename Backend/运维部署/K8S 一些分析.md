@@ -93,6 +93,9 @@ spec:
 ```
 
 然后我们可以通过 k8s 官方提供的 `crictl` 命令来在 node 上检查和调试容器运行时、镜像以及容器的运行状态。如果我们执行 `sudo crictl ps -a | grep hardcore-pod` 查看我们启动的 pod 中的容器进程状态，除了我们启动的业务容器，k8s 还自动启动了一个 `k8s.gcr.io/pause` 容器。当 k8s 启动一个 pod 时，kubelet 首先拉起一个极小的永远 `sleep` 的 C 语言程序（即 pause 容器）。kubelet 为这个 pause 容器创建了全新的 network namespace 和 ipc namespace。接着，kubelet 拉起通过配置文件声明的业务容器（比如我们上面声明的 nginx 和 busybox）。kubelet **不为它们创建新的网卡和网络隔离**，而是直接使用 `setns` 系统调用（因为业务容器进程不是 pause 容器进程通过 clone/fork 创建的，不共享 ns），把业务容器的 namespace 设置为 pause 容器的 network namespace。最后在这个 pod 里，不同的业务容器仿佛运行在同一台物理机上，它们可以通过 `127.0.0.1` 直接互相通信，共享同一个 MAC 地址和 IP。
+
+这里所谓的 infra 容器**仅限于**实现 CRI 接口的是 Docker，即 dockershim；如果是别的容器引擎实现的 CRI，比如 Kata Containers，它的 CRI 实现就会直接创建出一个轻量级虚拟机来充当 Pod。
+
 ![](assets/K8S%20一些分析/file-20260515110414999.png)
 
 # Informer
