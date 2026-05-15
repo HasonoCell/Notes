@@ -120,7 +120,7 @@ controller 一被启动，`reflector` 会向 api-server 发送一个 `GET /api/v
 
 如果有人通过 kubectl 创建了一个新的 pod。api-server 顺着刚才 Watch 阶段的长连接，把这段 JSON 推给了此 pod 所属 controller 的 `reflector`。`reflector` 收到 JSON 后，把它包装成一个增量对象（例如：`事件类型: Added, 数据: Pod 1001`），然后立刻把它塞进 `DeltaFIFO`（增量先进先出队列）里。
     
-之所以有这么个增量队列，是因为 `reflector` 必须马上回去继续处理属于此 controller 的网络请求，不能被后面的处理卡住，所以扔进队列是最好的解耦。
+之所以有这么个增量队列，是因为 `reflector` 必须马上回去继续处理属于此 controller 的网络请求，不能被后面的处理卡住，所以扔进队列是最好的解耦，这也是 `DeltaFIFO` 对于 `reflector` 的重要性。
 
 ## Indexer 与 EventHandler
 
@@ -149,3 +149,57 @@ informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 ---
 
 这篇文章讲的很不错：[Title Unavailable \| Site Unreachable](https://github.com/rfyiamcool/notes/blob/main/kubernetes_client_go_informer.md)
+
+# 一个 Pod 是如何被创建的
+
+问了一下 Gemini，答得比较满意～
+
+---
+
+**你通过 `kubectl` 提交了一个要跑 1 个副本的 Deployment YAML。**
+
+API Server 收到请求后，仅仅是把这个 Deployment 的配置存进了 etcd。接下来，整个集群的“连锁反应”开始，Informer 开始疯狂运转：
+
+## 阶段一：Controller
+
+Controller 进程的内存里，跑着一个监听 Deployment 的 Informer。
+
+1. **Reflector**：通过与 API Server 的长连接，瞬间“Watch”到 etcd 里多了一个 Deployment 记录。它立刻把这段 JSON 数据拉回本地。
+    
+2. **DeltaFIFO**：Reflector 将这个 `Added` 事件打包，塞进 Controller 内存中的 DeltaFIFO 增量队列排队。
+    
+3. **Indexer**：Informer 从队列中取出事件，**第一步**，先将这个新 Deployment 的数据更新到 Controller 的本地内存 Indexer 中。
+    
+4. **EventHandler & WorkQueue**：**第二步**，触发 `AddFunc` 回调。回调函数只做一件事：把这个 Deployment 的 Key（比如 `default/my-deploy`）塞入工作队列。
+    
+5. **执行发包 (Worker)**：Controller 的干活协程从队列拿到 Key，反向去 Indexer 查出现状（副本数为 0），对比期望（副本数为 1）。它立刻向 API Server 发起一个真正的 HTTP POST 请求：**“给我创建一个 Pod 数据结构！”**
+    
+    _(注：此时创建出的 Pod 记录在 API Server 里，其 `nodeName` 字段为空 `""`，状态为 `Pending`)_
+    
+## 阶段二：Scheduler
+
+Scheduler 进程的内存里，跑着一个监听 Pod 的 Informer。它的 Reflector 做了一层过滤，只盯 `nodeName==""` 的对象。
+
+1. **Reflector**：API Server 里刚存入 Controller 申请的那个空壳 Pod，Scheduler 的 Reflector 立刻通过长连接“Watch”到了这个新 Pod。
+    
+2. **DeltaFIFO**：事件被扔进 Scheduler 内部的增量队列排队。
+    
+3. **Indexer**：从队列取出后，更新 Scheduler 自己的本地内存缓存。此时 Scheduler 的 Indexer 里多了一个待调度的 Pod。
+    
+4. **EventHandler & WorkQueue**：触发 `AddFunc` 回调，将该 Pod 的 Key 塞入 Scheduler 的调度队列中。
+    
+5. **执行发包 (Worker)**：Scheduler 的核心调度算法协程从队列拿到 Key，去 Indexer 查出该 Pod 的需求参数。然后对比内存中各个 Worker Node 的资源状态，计算最终该去哪个 Node（Predicate -> Priority 两阶段），最后决定把 Pod 放到 `Node-A`。最后，它向 API Server 发起一个 HTTP POST (**Bind** 请求)：**“把这个 Pod 的 nodeName 字段改成 Node-A！”**
+
+## 阶段三：Kubelet
+
+在远端物理机 `Node-A` 上，Kubelet 进程的内存里也跑着一个监听 Pod 的 Informer。它的过滤条件是：只盯 `nodeName=="Node-A"` 的对象。
+
+1. **Reflector**：API Server 刚把 Pod 的 nodeName 改为 `Node-A`，这台物理机上的 Reflector 立刻就收到了长连接的推送。
+    
+2. **DeltaFIFO**：事件被扔进 Kubelet 内部的增量队列缓冲。
+    
+3. **Indexer**：从队列取出后，更新 Kubelet 的本地缓存。此时，Kubelet 确信 API Server 真的分派了一个属于自己的任务。
+    
+4. **EventHandler & WorkQueue**：触发回调，将该 Pod 的 Key 塞进 Kubelet 的内部处理队列（通常叫 `syncLoop` 队列）。
+    
+5. **执行发包 (Worker)**：Kubelet 的 Worker 协程取出 Key，从本地 Indexer 拿到 Pod 的详细参数（要拉什么镜像，配什么网络）。它不再请求 API Server，而是**直接向下调用本机的 CRI（容器运行时，比如你写的 Covet）和 CNI（网络插件）**，在 Linux 内核里执行真正的 `clone`、`setns`、`iptables` 操作，最终拉起真实的容器进程！
