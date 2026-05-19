@@ -1,0 +1,906 @@
+# Knowledge
+
+## 寄存器，指令，地址，内存
+
+在正式开始页表的有关内容之前，感觉有必要先补齐一下一些必要的体系结构的知识......所以先来搞清楚地址，内存和寄存器吧～
+
+一条**指令**表示 CPU 能理解的一条操作，比如“加”“跳转”“读寄存器”“写内存”。指令以**二进制**的方式存储，这些二进制码通常也叫**机器语言**，但是人不可能直接写机器语言吧，所以我们有了**汇编语言**，可以用人能理解的文本来写指令，比如：`add a0, a1, a2` 意思就是说，将寄存器 a1 和 a2 的值相加，然后存储到寄存器 a0。所以，**寄存器**是指令直接操作的对象，也可以说，CPU 是直接操作寄存器的。
+
+一个**地址**本身其实就是一个数字，理想状态下通常从 0 开始并且连续，用来定位**内存**。
+
+- **内存按字节编址**：通常一个地址对应 1 个字节的内存空间，这叫“一个地址指向一个 byte”
+- **地址值本身的存储大小**：保存这个地址需要多少字节，通常是 4 字节或 8 字节
+
+所以通常一个 4 字节大小的 int 类型变量指的是在内存中会占用 4 字节大小的连续空间，编程语言里一个**指针**通常保存的是这个对象起始字节的地址，通常是 4 字节（32位机器）或者 8 字节（64 位机器）大小。可以说，**指针就是地址**
+
+一个 64 位**寄存器**，本质是一个高速存储单元，可以表示 64 位的数据，即 8 个字节大小。注意这里不要将“地址的大小”和“内存的大小”弄错了，地址的本质就是**一个数字**，但是这一个数字背后所代表的内存空间大小必须是 1 个字节。比如我现在有一个地址用十进制写出来是数字 2000，那就会有这样的映射关系：十进制数字 2000 -> 1 字节，十进制数字 2001 -> 1 字节，且由于这两个地址连续，所对应的内存空间**理论上**也是连续的。为什么说是理论上呢，接着往后看。
+
+前面我们提到了 64 位寄存器，就代表了其可以表示的最大十进制数字是 $2^{64} - 1$，不妨将其定义为 MAX，而在 0～MAX 这个区间内的每一个数字，都可以作为一个地址，映射到一个 1 字节大小的内存空间，所以 64 位寄存器所能映射的内存大小，其实是非常大的，即 $2^{64}$ 字节的内存大小，大约 171 亿 GB。而现在常见的计算机的内存大小基本上都是 16 GB，32 GB 这样子，这说明“理论地址可表示的范围”与“机器真实拥有的物理内存大小”并不是一回事。现代操作系统引入了**虚拟内存**机制：程序使用的是虚拟地址，而不是直接操作物理地址。这里我很推荐去看看 [4.2 地址空间（Address Spaces） \| CS课程文字稿](https://zh.cs.mit.glasscat.top/library/mit-s081/lec04-page-tables-frans/4.2-di-zhi-kong-jian-address-spaces) 这里的课堂文档，很好地展示了虚拟内存对于隔离性的好处。
+
+引入虚拟内存的核心目的，不是简单地因为“理论地址太多用不完”，而是为了让每个进程拥有独立的地址空间，并让操作系统能够控制内存映射、访问权限、内存复用和进程隔离。
+
+在 64 位的计算机中，运行在 user mode 下的进程，所使用的内存空间，全部都是虚拟内存，这一点其实在 Chapter 2 的笔记中也有所提及，不过我觉得操作系统这门课，很多概念其实都是有所关联的吧，不能说完全地隔离啥的～～接着说，虚拟内存会由操作系统中的页表来维护。
+
+**MMU（内存管理单元）**，也就是教材中提到的所谓 paging hardware， 是 CPU 中负责地址翻译的硬件部分，内核维护页表，并通过寄存器告诉硬件使用哪张页表，随后 CPU 在执行访存指令时，由 MMU 按页表完成翻译，将虚拟地址翻译为真实的物理地址，从而定位到物理内存。
+
+**一台计算机上的寄存器不止一个**，其中一部分被称为为**通用寄存器组**，编号从 x0，x1 一直到 x31。而在这一堆寄存器中，按照 RISC-V 调用约定（ABI），x10 到 x17 这 8 个寄存器通常用于传递函数参数。所以它们被取了别名：a0 到 a7。如果你认真研究过 lab2，在 syscall() 这个函数中，你会发现这样两行代码：
+
+```c
+num = p->trapframe->a7;
+
+p->trapframe->a0 = syscalls[num]();
+```
+
+十分亲切～，其实这里在 usys.S 文件中的汇编代码里面，我们把所调用的 syscall 的编号存进了寄存器 a7 中，而 p->trapframe->a7 发生的事，就是 kernel trap code 和硬件在 trap 发生时**将寄存器 a7 里面所存放的值写入内存，从而提供给 p->trapframe->a7 读取**。而后又将调用结果存入 trapframe 的 a0，后续又会被恢复到寄存器 a0 中。
+
+## 页表结构
+
+在操作系统中，页表不止一张，通常是每个进程各自一张用户页表（p->pagetable），以及内核自己的一张内核页表（kernel_pagetable）。
+
+CPU 是如何在工作中知道该访问哪一张页表的？答案是通过 **satp** 这个寄存器。它保存了当前页表根节点的物理地址。CPU 在做地址翻译时，会从 satp 指向的那张根页表开始，一级一级往下查。所以 satp 也解释了为什么不同进程之间会觉得自己有独立的内存空间，但是实际上是使用的同一台机器上的物理内存，原因就是 CPU 在不同进程间工作时，会切换 satp，进而去切换页表。另外，satp 是每个 CPU 各自拥有的寄存器，因此在多核机器上，不同 CPU 甚至可以同时运行不同进程，各自使用不同的页表。
+
+当我们确定了要使用哪一张页表之后，在一张页表内部，采用了**先分块映射，再定位字节**的方法。虚拟内存和物理内存在 xv6 中被 4KB（4096 个字节） 分为一块，记录由 VPN（Virtual Page Number） 到 PPN 的映射。当 MMU 拿到一个 64 位的虚拟地址时，虚拟地址记录了两部分内容： VPN（存储在地址的高位部分） 和 Offset（存储在低 12 位地址，因为 $2^{12} = 4096$，所以要精确表示这 4096 个字节里的每一个位置，刚好需要 **12 个 Bit**） 两部分，VPN 自然而然就是用来在页表中查找对应的 PPN，而 Offset 是用来在通过 PPN 查找到对应的物理内存块之后，用来定位具体的某一字节的。**Offset 记录了某一字节在该物理内存块中的相对位置**，这其实是一种极其优雅的设计，就算操作系统在调度页表时变换了 PPN，只要有 Offset，CPU 就能定位到那个 4KB 块里具体的某一个字节。
+
+上述只介绍了简单的单级页表结构，而在 xv6 中，实际采用的是三级页表结构。由于 Sv39 可用虚拟地址空间很大（低 39 位），即使按 4KB 分页，页表条目也非常多，RISC-V 采用了**三级目录**的设计：
+
+1. 真正的虚拟地址虽然存在 64 位寄存器里，但 RISC-V 实际上只使用了低 **39 位**。
+2. 这 39 位被分成了 4 段：`L2 VPN` (9位) + `L1 VPN` (9位) + `L0 VPN` (9位) + `Offset` (12位)。其实还是我们在单级页表中讲到的 VPN + Offset 两大部分。
+3. MMU 查表时，不是查一次，而是拿着 L2 去第一级表查，查到第二级表的地址；再拿着 L1 去查......连续查三次表，最终拼上原封不动的 12 位 Offset，定位到物理内存的某一字节。
+
+## PTE 标志位、page fault 和 TLB
+
+前面我们已经知道，页表的核心作用，是把虚拟地址翻译成物理地址。不过如果页表只能做虚拟地址翻译，那它的作用其实还不够强大。真正让页表成为操作系统核心机制的地方在于：页表中的每个页表项 PTE，不只是记录“映射到哪”，还记录“能不能这么用”。
+
+### PTE 标志位
+
+在 xv6 所使用的 RISC-V Sv39 机制中，一个页表项 PTE 里最重要的内容有两部分：PPN 和 flags，后者是一组标志位，用来描述这个页的权限和状态。也就是说，一个 PTE 本质上回答了两个问题：
+
+1. 这个虚拟页映射到哪个物理页？
+2. 这个页允许被怎样访问？
+
+其中最核心的几个标志位如下：
+
+- PTE_V：Valid，表示这个 PTE 是否有效
+- PTE_R：Read，表示是否允许读
+- PTE_W：Write，表示是否允许写
+- PTE_X：Execute，表示是否允许执行
+- PTE_U：User，表示 user mode 下是否允许访问
+
+所以 CPU 在根据 VPN 查页表时不仅仅是简单地查 PPN，更关键地是去查当前这次访问是否合法。举个简单例子：
+
+- 如果一个页设置了 PTE_R，那程序就可以读它
+- 如果没设置 PTE_W，那程序往这个页写数据时，就会出问题
+- 如果没设置 PTE_U，那即使这个页存在，user mode 下的程序也不能碰它
+
+这也是为什么操作系统可以通过页表，精细地控制进程到底能访问什么内存。
+
+### page fault 是什么
+
+前面我们多次提到过 trap，而 page fault 其实就是其中一种很重要的异常。当 CPU 拿着一个虚拟地址去查页表时，如果出现以下情况之一：
+
+- 某一级 PTE 不存在
+- PTE 存在但对应 PTE 没有设置 PTE_V
+- 当前访问方式和权限不匹配
+- user mode 下访问了一个没有 PTE_U 的页
+
+那么这次地址翻译或者访问就不能继续完成。此时 CPU 会立刻触发异常 trap。这种异常就叫做 page fault。所以 page fault 代表 CPU 发现某个虚拟地址当前无法被合法地翻译或访问。当然，在 xv6 的很多场景下，如果用户程序访问了非法地址，内核往往会直接把这个进程杀掉。但从机制上讲，page fault 更准确的意思是：
+
+- 硬件发现地址访问不成立
+- 然后通过 trap 机制把问题交给内核
+
+### TLB 是什么
+
+前面说 Sv39 是三级页表，也就是说 CPU 每次访问一个虚拟地址时，理论上都要查三级页表才能定位到物理内存。如果每次访存都这么干，那就太慢了。所以 CPU 里会有一个专门的小缓存，叫做 TLB（Translation Lookaside Buffer）。TLB 的作用就是：**缓存最近使用过的虚拟地址到物理地址的翻译结果**。这样一来，如果某个地址翻译最近刚做过，那么下次 CPU 再访问这个地址时，就不一定要重新走完整个三级页表，而是可以直接从 TLB 里把翻译结果拿出来，大大提高速度。
+
+### 这几个概念之间的关系
+
+到这里，其实可以把这几个概念串起来看：
+
+1. 用户程序发出一个虚拟地址
+2. CPU 根据 satp 找到当前页表根
+3. MMU 拆解 VA 得到 VPN 和 Offset，然后查页表
+4. 查页表时同时检查 PTE 中的权限位
+5. 如果翻译成功，就得到 PPN，定位到物理内存块，拼接 Offset，访问物理内存
+6. 如果翻译失败或者权限不符，就触发 page fault
+7. 为了避免每次都查三级页表，CPU 会用 TLB 缓存常用翻译结果
+
+所以这一整套机制共同完成了这样一件事：让程序始终使用虚拟地址，而由硬件和操作系统共同决定这些地址真正指向哪里、能不能访问。
+
+## 代码解读
+
+前面的理论部分虽然已经知道了页表的大致作用，但如果不结合 xv6 的具体实现，很容易始终处于“概念上好像懂了，但代码里完全看不出来”的状态。所以下面我们不再空谈页表，而是
+直接围绕几个最核心的问题来看源码：
+
+1. 页表在 xv6 中到底是如何定义的？
+2. 一张页表是如何被创建出来的？
+3. CPU 运行时到底是如何使用这张页表的？
+4. proc_pagetable 和 exec 函数
+
+### 页表在 xv6 中如何定义
+
+如果只从教材里看 “page table” 这个词，很容易误以为页表是一整张巨大的表，里面直接存满了从虚拟地址到物理地址的映射。但在 xv6 的实现里，页表并不是一个单独的大数组，而是一个由多个页表页（page-table page）组成的三级树结构。
+
+先来看 xv6 代码里和页表最直接相关的两个类型：
+
+- pte_t：表示一个页表项（page table entry）
+- pagetable_t：表示页表
+
+在 xv6 中，pte_t 本质上是一个 uint64，而 pagetable_t 本质上是一个 uint64* 。也就是说：
+
+- 一个 PTE 是一个 64 位整数
+- 一个 pagetable 是一个指针，指向一段由许多 PTE 组成的内存区域
+
+```c
+typedef uint64 pte_t;
+typedef uint64 *pagetable_t; // 512 PTEs
+```
+
+为什么 pte_t 要用 uint64 来表示？因为在 RISC-V 的 Sv39 机制里，一个页表项本来就是一个 64 位宽的数据结构，里面既要保存物理页号 PPN，也要保存一组标志位 flags。所以 PTE 本质上不是一个普通整数，而是一个按位切分的 64 位的容器，其中高位存的是物理页号，低位存的是权限位和状态位。pagetable_t 这个名字一开始很容易让人误解。它虽然叫 “page table”，但从代码实现上看，它其实更准确地说是：根页表页的起始地址。也就是说：
+
+- 在抽象意义上，pagetable_t 代表“一整张页表”
+- 在实现意义上，它存的其实只是“根页表页”的地址，然后可以从根页表页开始，遍历整个页表
+
+所以这里 pagetable_t 可以看作是页表这个三层树结构的根节点指针。在 kernel/vm.c 的 walk() 函数中，有这样一句非常关键的代码：
+
+```c
+pte_t *pte = &pagetable[PX(level, va)];
+
+// PX 这个宏表示从虚拟地址 va 里，取出某一级页表要用的那 9 个 bit，即一个 0～511 的整数
+//（虚拟地址分为 L2/L1/L0 和 offset）
+// 比如 level=2，就取 va 的 L2
+```
+
+这说明，pagetable 被当成了一个数组来使用。而这个数组中的每一个元素，都是一个 PTE。换句话说，一张页表页在 xv 6 中，其实就是这样一种东西：`pagetable = [ PTE0, PTE1,...,PTE511 ]`
+也就是说，一张页表页，本质上就是一个由 512 个 PTE 组成的数组。为什么正好是 512 个？因为 xv6 中一页大小是 4KB = 4096 字节,一个 PTE 的大小是 8 字节，也就是一个 uint64。所以：4096 / 8 = 512
+
+这意味着，一个页表页刚好可以存放 512 个页表项。而 Sv39 虚拟地址中每一级索引正好是 9 位，这也正好对应：2^9 = 512。所以这里就形成了一个非常优雅的对应关系：
+
+- 一张页表页 = 512 个 PTE
+- 每一级索引 = 9 bit
+- 9 bit 刚好能在 512 个 PTE 中选中一个
+
+不过这里还要再强调一个非常重要的点：一张页表并不等于一张页表页。在 Sv39 里，真正的一整张页表是一个三级结构。也就是说：
+
+- satp 指向的是根页表页
+- 根页表页中的某些 PTE 会指向下一层页表页
+- 下一层页表页中的某些 PTE 又会继续指向再下一层页表页
+- 直到最底层的叶子 PTE 才真正指向某个物理页
+
+这一点也能在代码里看到。在 walk() 中：
+
+```c
+if(*pte & PTE_V) {
+	pagetable = (pagetable_t)PTE2PA(*pte);
+}
+```
+
+这段代码的意思是：
+
+- 先取出当前层级中的某个 PTE
+- 如果它是有效的(PTE_V)
+- 那么这个 PTE 里存放的并不是最终数据页，而是“下一层页表页”的物理地址
+- 然后把这个地址重新类型转换为一个新的 pagetable_t
+- 更新当前所遍历到的页表页节点，继续往下一层查
+
+也就是说，在 xv6 的实现里，页表本质上是一棵三级树，而树中的每一个节点，都是一张 4KB 的页表页；每张页表页里又都是 512 个 PTE。
+
+### 一张页表在 xv6 中是如何创建出来的？
+
+#### 关键的 kalloc.c
+
+在学习页表的创建过程之前，我觉得非常有必要先好好看看 kernel/kalloc.c 这个文件，它的主要作用就是分配一页 4096 字节（4 KB）的**物理页**，来给操作系统进行调度（用于页表，文件或者进程），所以这个文件是一个很基础的部分，非常值得一看。
+
+我们先来对整个文件有个大体的认知。kalloc.c 的核心思想非常简单：用一个空闲链表 freelist 管理所有可用物理页。最主要的其实就是通过 kmem 结构体中的 freelist 链表来把每一个空闲物理页作为一个个节点来管理。kinit 用来初始化锁和调用 freerange 函数，freerange() 会把一段可用物理内存范围，按页切开，然后一页一页地调用 kfree()。最后把这些页全挂进 freelist。现在我们来看一些具体代码
+
+首先是一个关键的结构体 run：
+
+```c
+struct run {
+	struct run *next;
+};
+```
+
+struct run 是空闲物理页在 kalloc.c 中的链表节点表示。xv6 并不会额外为 freelist 创建专门的节点，而是直接把一页空闲物理页本身的开头解释成一个 struct run，并用其中的 next 指针把多个空闲页串起来。而接下来的结构体 kmem:
+
+```c
+struct {
+	struct spinlock lock;
+	struct run *freelist;
+} kmem;  
+```
+
+这个 kmem 就是整个物理页分配器的全局状态。freelist 是一个 struct run * ，也就是说它指向链表中的第一个空闲页。后面的每个空闲页再通过 run->next 串起来。
+
+再看 kinit：
+
+```c
+void
+kinit()
+{
+	initlock(&kmem.lock, "kmem");
+	freerange(end, (void*)PHYSTOP);
+}
+```
+
+首先初始化锁，更关键的是 freerange，它的意思是：从 end 开始，到 PHYSTOP（一个宏） 结束，把这整段物理内存都看作“可分配页”，然后交给 freerange() 去处理，其中 end 表示内核镜像在内存中的结束位置，即 0～end 这个区间的物理内存已经被 kernel 代码和数据占用了，要跳过，
+freerange 的任务，就是将这一大段空闲物理内存，拆分成一页一页的结构：
+
+```c
+void
+freerange(void *pa_start, void *pa_end)
+{
+	char *p;
+	p = (char*)PGROUNDUP((uint64)pa_start);
+	for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+	kfree(p);
+}
+```
+
+
+首先定义了一个 char 类型的指针 p，用来在整段物理内存里往前走。为什么用 char * 呢？主要是因为在 C 语言中 char * 做指针加法时，是按 1 字节递增的。后面写 p += PGSIZE，就很自然地表示“往后跳 4096 字节”，也就是跳到下一页。这里其实也可以发现一个很有趣的点就是，xv6 里面很多时候声明变量都不太在乎其类型的意义，只是想要更精细的字节控制，比如前面 `typedef pte uint64`，不是说真的需要 pte 是个数字，只是想要一个 64 位 8 字节的容器可以存放 PPN 和 flags，而这里 freerange 中的 p 也是，不是说真的需要 p 是一个字符，而只是想要“1 字节”这种细粒度的内存长度控制。
+
+接着第二行：`p = (char*)PGROUNDUP((uint64)pa_start);` 它的作用是把起始地址 pa_start 向上对齐到最近的页边界。比如假设：
+
+- PGSIZE = 4096
+- pa_start = 5000
+
+所以空闲页的拆分状况应该是：0～4095，4096～8191，8192～后续空闲内存，那 5000 就落在第二个页中间，不是页开头。页分配器不能把半页塞进 freelist，只能管理完整页。所以 PGROUNDUP(5000) 会变成下一个页边界 8192。后续 kfree() 也只接受页对齐的地址：
+
+```c
+if(((uint64)pa % PGSIZE) != 0 || ...)
+panic("kfree");
+```
+
+如果地址不是页边界，直接 panic。
+
+接下来就是循环 `for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)` 从第一个完整页开始，每次往后跳一页。每次循环执行 kfree(p)，每次传入一页空闲物理页的开头第 1 个字节 p，把这页登记成空闲页，并挂到 kmem.freelist 上。
+
+接下来我们继续看 krfee()
+
+```c
+void
+kfree(void *pa)
+{
+	struct run *r;
+
+	if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
+	  panic("kfree");
+
+	// Fill with junk to catch dangling refs.
+	memset(pa, 1, PGSIZE);
+	r = (struct run*)pa;
+	
+	acquire(&kmem.lock);
+	r->next = kmem.freelist;
+	kmem.freelist = r;
+	release(&kmem.lock);
+}
+```
+
+最有意思的应该是 memset 那两行，首先 kfree 不知道拿到一个 p 里面有没有旧数据，所以在 p 到 p + PGSIZE 的区间内将值全部变为 1，也就是将每一个字节变为 0x01，写入垃圾值，帮助发现悬空引用。而 `r = (struct run*)pa;` 非常关键，这里并不是重新创建了一个新的 struct run 对象，而是把这页空闲内存的起始地址重新解释成一个链表节点。由于 struct run 只包含一个 next 指针，因此只需要利用这页开头的 8 个字节，就足以把整页内存挂入 freelist。这体现了 xv6 底层实现中的一个典型特点：同一块物理内存，在不同阶段可以被解释成不同类型的对象；当它空闲时，可以临时被解释为 struct run，从而作为空闲页链表的节点使用。
+
+理解了上面的内容，接下来的 kalloc 函数就很好懂了，就是从 freelist 链表中取开头的一个空闲物理页节点，用一个指针 r 指向它，然后将 freelist 头节点后移，将 r 所指向的这页物理内存页填充上垃圾数据，最后返回 r：
+
+```c
+// Allocate one 4096-byte page of physical memory.
+// Returns a pointer that the kernel can use.
+// Returns 0 if the memory cannot be allocated.
+void *
+kalloc(void)
+{
+  struct run *r;
+
+  acquire(&kmem.lock);
+  r = kmem.freelist;
+  if(r)
+    kmem.freelist = r->next;
+  release(&kmem.lock);
+
+  if(r)
+    memset((char*)r, 5, PGSIZE); // fill with junk
+  return (void*)r; // 这里返回时解释为 void*，也就相当于返回一页裸地址
+  // 即语义上不再把这页解释为 freelist 节点
+}
+```
+
+**总结**：xv6 管理物理内存的核心思想很简单：它不按任意大小管理内存，而是把可用物理内存统一切成固定大小的 4KB 页，再用一条受锁保护的空闲链表 freelist 来管理这些空闲页；每个空闲页本身会临时充当链表节点，因此不需要额外的管理结构。系统初始化时，会把一整段可用物理内存按页切开并全部挂入 freelist，后续谁需要物理页，就从链表头取一页；谁释放页，就再把这一页挂回链表头。这样，xv6 就用一种非常朴素但完整的方式，实现了物理页的分配回收。
+
+#### 页表的创建过程
+
+既然前面已经知道了 xv6 中的页表本质上是一个由多个页表页组成的三级树结构，那么接下来的问题就是：这样一棵树到底是如何被创建出来的？一个非常自然但错误的想法是：既然页表最终是三级结构，那是不是一开始就会把整棵树完整地创建出来？xv6 的做法并不是这样。它采用的是一种更节省内存的方式：
+
+- 先只创建根页表页
+- 后续在真正需要映射某个虚拟地址时，再按需创建中间层页表页和叶子页表项
+
+所以，一张页表在 xv6 中并不是一次性创建完成的，而是逐步长出来的～。这一过程主要涉及三个函数：
+
+- uvmcreate()：创建根页表页
+- walk()：沿着页表树向下查找，必要时创建缺失的中间页表页
+- mappages()：在叶子位置真正写入虚拟页到物理页的映射
+
+先看 kernel/vm.c 中的 uvmcreate()：
+
+```c
+// create an empty user page table.
+// returns 0 if out of memory.
+pagetable_t
+uvmcreate()
+{
+  pagetable_t pagetable;
+  pagetable = (pagetable_t) kalloc();
+  if(pagetable == 0)
+    return 0;
+  memset(pagetable, 0, PGSIZE);
+  return pagetable;
+}
+```
+
+uvmcreate() 的作用，是创建一张新的空用户页表的根页表页。它首先调用 kalloc() 分配一页 4KB 的物理内存，并将返回的地址转换为 pagetable_t，也就是把这页内存解释成一张页表页的起始地址；从 C 语言视角看，这页内存随后会被当成一个由 512 个 PTE 组成的数组来使用。如果 kalloc() 失败，就直接返回 0；如果成功，则用 memset(..., 0, PGSIZE) 将整页清零。要注意，uvmcreate() 创建出来的并不是完整的三级页表，而只是根页表页。此时这页中的 512 个 PTE 槽位都为 0，表示还没有任何下层页表页或叶子映射被建立。
+
+接下来，真正让这棵树变完整起来的是 walk() 函数。
+
+```c
+// Return the address of the PTE in page table pagetable
+// that corresponds to virtual address va.  If alloc!=0,
+// create any required page-table pages.
+//
+// The risc-v Sv39 scheme has three levels of page-table
+// pages. A page-table page contains 512 64-bit PTEs.
+// A 64-bit virtual address is split into five fields:
+//   39..63 -- must be zero.
+//   30..38 -- 9 bits of level-2 index.
+//   21..29 -- 9 bits of level-1 index.
+//   12..20 -- 9 bits of level-0 index.
+//    0..11 -- 12 bits of byte offset within the page.
+pte_t *
+walk(pagetable_t pagetable, uint64 va, int alloc)
+{
+  if(va >= MAXVA)
+    panic("walk");
+
+  for(int level = 2; level > 0; level--) {
+    pte_t *pte = &pagetable[PX(level, va)];
+    
+    if(*pte & PTE_V) {
+      pagetable = (pagetable_t)PTE2PA(*pte); 
+    } else {
+      if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
+        return 0;
+      memset(pagetable, 0, PGSIZE);
+      *pte = PA2PTE(pagetable) | PTE_V;
+    }
+  }
+  
+  return &pagetable[PX(0, va)];
+}
+```
+
+walk() 的作用，就是沿着某个虚拟地址 va 对应的三级页表路径往下找；如果中间哪一级页表页还不存在，并且允许分配，就调用 kalloc() 新建那一级页表页。walk() 不是直接返回物理地址，它返回的是：“这个 va 在最底层对应的那个 PTE 槽位在哪里”，后面的 mappages() 就靠这个返回值，把真正的映射写进去。
+
+假设现在 walk() 想要查找某个虚拟地址 va 在第 2 级页表中的入口，也就是：`pte_t *pte = &pagetable[PX(level, va)];` 如果这个位置上的 PTE 已经有效，也就是：`if(*pte & PTE_V)` 那说明这一级对应的下一层页表页早就存在了，于是拿出下一层页表页的物理地址，将其解释为 pagetable_t，然后继续下一轮循环。
+
+walk() 在发现某一级 PTE 还不存在且 alloc=1 时，会调用 kalloc() 新分配一页物理内存，并把它解释为下一层页表页，给这一页清零，再把它的地址写入当前层的 PTE 中。源码里这里写成 `(pde_t*)kalloc()`，但从语义上理解成 `(pagetable_t)kalloc()` 也完全说得通，本质都是“把一页新内存当成下一层页表页来使用”。
+
+我们继续来看 mappage()：
+
+```c
+// Create PTEs for virtual addresses starting at va that refer to
+// physical addresses starting at pa. va and size might not
+// be page-aligned. Returns 0 on success, -1 if walk() couldn't
+// allocate a needed page-table page.
+int
+mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
+{
+  uint64 a, last;
+  pte_t *pte;
+
+  if(size == 0)
+    panic("mappages: size");
+  
+  a = PGROUNDDOWN(va);
+  last = PGROUNDDOWN(va + size - 1);
+  for(;;){
+    if((pte = walk(pagetable, a, 1)) == 0)
+      return -1;
+      
+    if(*pte & PTE_V)
+      panic("mappages: remap");
+      
+    *pte = PA2PTE(pa) | perm | PTE_V;
+    
+    if(a == last)
+      break;
+    a += PGSIZE;
+    pa += PGSIZE;
+  }
+  return 0;
+}
+```
+
+`a = PGROUNDDOWN(va)` 意思是：找到 va 所在虚拟页的页起始地址，`last = PGROUNDDOWN(va + size - 1)` 意思是：找到这段 va + size 区间最后一个字节所在虚拟页的页起始地址。这样之后就能从 a 开始，一页一页往后映射，直到 last。
+
+在 for 循环中，每轮循环处理一页的映射关系。`if((pte = walk(pagetable, a, 1)) == 0)` 这一句，从页表树根节点 pagetable 开始 walk，去找到虚拟地址 a 对应的 L0 层的 PTE，如果中间路径不存在，还会顺便构造中间路径。现在我们有了 a 对应的最底层 PTE，如果不是重复映射，那么就执行最关键的一行代码：`*pte = PA2PTE(pa) | perm | PTE_V;` 它做的事就是：
+
+- 把当前物理页地址 pa 转成 PTE 里地址字段该有的格式
+- 加上权限位 perm，再加上有效位 PTE_V
+- 最后塞回 pte 的那个槽位回去。
+
+然后 a 和 pa 各加上 PGSIZE，继续按一页一页的方式去映射。
+
+### CPU 运行时到底是如何使用这张页表的？
+
+前面我们已经知道 xv6 会创建一张用户页表，并把虚拟页到物理页的映射写进这张页表树中。但仅仅“把页表建出来”还不够，CPU 还必须知道：当前到底应该使用哪一张页表来解释虚拟地址。这件事是通过 satp 寄存器完成的。satp 中保存的是当前页表根页表页的物理地址，因此 CPU 在进行地址翻译时，会从 satp 指向的那张根页表页出发，沿着三级页表一路往下查，最终得到物理页地址和访问权限。
+
+不过这里有个问题：xv6 中页表不止一张，通常每个进程各有自己的用户页表，同时内核自己也有一张内核页表。那么 CPU 到底什么时候该用用户页表，该用哪一张用户页表，什么时候又该用内核页表呢？答
+案就是：在用户态和内核态切换时，xv6 会显式地切换 satp。
+
+我们先看返回用户态之前的代码，也就是 kernel/trap.c 中的 usertrapret()：
+
+```c
+//
+// return to user space
+//
+void
+usertrapret(void)
+{
+  struct proc *p = myproc();
+
+  // we're about to switch the destination of traps from
+  // kerneltrap() to usertrap(), so turn off interrupts until
+  // we're back in user space, where usertrap() is correct.
+  intr_off();
+
+  // send syscalls, interrupts, and exceptions to trampoline.S
+  w_stvec(TRAMPOLINE + (uservec - trampoline));
+
+  // set up trapframe values that uservec will need when
+  // the process next re-enters the kernel.
+  p->trapframe->kernel_satp = r_satp();         // kernel page table
+  p->trapframe->kernel_sp = p->kstack + PGSIZE; // process's kernel stack
+  p->trapframe->kernel_trap = (uint64)usertrap;
+  p->trapframe->kernel_hartid = r_tp();         // hartid for cpuid()
+
+  // set up the registers that trampoline.S's sret will use
+  // to get to user space.
+  
+  // set S Previous Privilege mode to User.
+  unsigned long x = r_sstatus();
+  x &= ~SSTATUS_SPP; // clear SPP to 0 for user mode
+  x |= SSTATUS_SPIE; // enable interrupts in user mode
+  w_sstatus(x);
+
+  // set S Exception Program Counter to the saved user pc.
+  w_sepc(p->trapframe->epc);
+
+  // tell trampoline.S the user page table to switch to.
+  uint64 satp = MAKE_SATP(p->pagetable);
+
+  // jump to trampoline.S at the top of memory, which 
+  // switches to the user page table, restores user registers,
+  // and switches to user mode with sret.
+  uint64 fn = TRAMPOLINE + (userret - trampoline);
+  ((void (*)(uint64,uint64))fn)(TRAPFRAME, satp);
+}
+```
+
+usertrapret() 的一个核心作用，就是为“下次该进程再 trap 进内核”提前准备现场信息；其中 kernel_satp 等字段被写入 p->trapframe，供 trampoline 在 trap 刚发生时先切回内核页表并进入内核使用。函数开头初始化的 p，就是触发 trap 的那一个进程。这一大段代码中，和“页表到底怎么被 CPU 使用”最关键的一句是：`uint64 satp = MAKE_SATP(p->pagetable);` 这里的意思是：
+
+- 当前进程的用户根页表页地址是保存在 p->pagetable 中的
+- MAKE_SATP(...) 会把这个页表根地址编码成可以写入 satp 寄存器的格式
+- 最后赋值给 satp 变量，这一步是在为“切换到当前进程的用户页表”做准备
+
+不过要注意，这里虽然已经构造出了新的 satp 值，但还没有真正把它写进硬件寄存器。真正执行 CPU user mode 切换的是 trampoline 汇编代码，也就是 kernel/trampoline.S 中的 userret：
+
+```asm
+userret:
+csrw satp, a1
+sfence.vma zero, zero
+```
+
+这里的 a1 中保存的，就是刚才 usertrapret() 传进来的那个用户页表 satp 值。从这一刻开始，CPU 之后执行用户程序的指令时，就会按照当前进程的那张用户页表来翻译虚拟地址。换句话说，页表真正开始被 CPU 使用，就是从 satp 被切换的那一刻开始的。
+
+接下来，当用户程序真正运行起来以后，它执行的所有 load/store/fetch 指令，看到的仍然都是虚拟地址，而不是物理地址。CPU 的 MMU 会在后台自动做下面这些事：
+
+1. 读取当前 satp，找到根页表页
+2. 把虚拟地址拆成 L2/L1/L0/Offset
+3. 沿着三级页表一路查下去
+4. 找到最底层叶子 PTE
+5. 检查其中的权限位是否合法
+6. 取出 PPN
+7. 再拼上原来的 Offset
+8. 得到最终物理地址
+
+如果这一步失败了，比如：
+
+- 某一级 PTE 不存在
+- PTE 存在但 PTE_V 没设置
+- 权限不满足
+- 用户态访问了没有 PTE_U 的页
+
+那么 CPU 就会触发 page fault，随后进入 trap 处理流程。不过，当用户态发生 trap 进入内核时，CPU 不能继续使用用户页表来执行内核代码，因为内核需要切回自己的地址空间，使用自己的内核页表。这个切换也是在 trampoline 代码里完成的。看 kernel/
+trampoline.S 里的 uservec：
+
+```asm
+ld t1, 0(a0)
+csrw satp, t1
+sfence.vma zero, zero
+```
+
+这里的 t1 里装的是之前在 usertrapret() 中保存到 trapframe 里的 kernel_satp，也就是内核页表。也就是说整个流程的意思是：trap 刚发生时，CPU 还在使用用户页表，这时 trampoline 代码会先通过固定映射的 TRAPFRAME 找到这页 trapframe，从里面取出 kernel_satp，然后切回内核页表，后面才真正进入 usertrap() 这类内核 C 代码。
+
+所以，xv6 中 CPU 对页表的使用，并不是“启动后固定用一张表”，而是一个动态切换的过程：
+
+- 当内核准备返回用户态时，会把 satp 切到当前进程的用户页表
+- 当用户态发生 trap 进入内核时，又会把 satp 切回内核页表
+
+也正是因为这种切换机制，xv6 才能同时保证两件事：
+
+1. 用户进程在自己的用户地址空间中运行
+2. 内核在自己的内核地址空间中运行
+
+从整个系统角度看，这条链路其实可以总结成：
+
+- uvmcreate() / walk() / mappages() 负责把页表“建出来”
+- satp 负责告诉 CPU “现在该用哪张页表”
+- usertrapret() 和 trampoline.S 负责在用户态和内核态切换时更新 satp 等等状态
+- MMU 则在运行时按照当前 satp 指向的页表，自动完成地址翻译
+
+所以一句话概括就是：在 xv6 中，页表建好之后并不会自动生效，真正决定 CPU 当前使用哪张页表的是 satp；内核在用户态和内核态切换时，会显式修改 satp，从而让 CPU 在不同地址空间之间来回切换。
+
+### proc_pagetable
+
+```c
+
+// Create a user page table for a given process,
+// with no user memory, but with trampoline pages.
+pagetable_t
+proc_pagetable(struct proc *p)
+{
+  pagetable_t pagetable;
+
+  // An empty page table.
+  pagetable = uvmcreate();
+  if(pagetable == 0)
+    return 0;
+
+  // map the trampoline code (for system call return)
+  // at the highest user virtual address.
+  // only the supervisor uses it, on the way
+  // to/from user space, so not PTE_U.
+  if(mappages(pagetable, TRAMPOLINE, PGSIZE,
+              (uint64)trampoline, PTE_R | PTE_X) < 0){
+    uvmfree(pagetable, 0);
+    return 0;
+  }
+
+  // map the trapframe just below TRAMPOLINE, for trampoline.S.
+  if(mappages(pagetable, TRAPFRAME, PGSIZE,
+              (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
+    uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+    uvmfree(pagetable, 0);
+    return 0;
+  }
+
+  return pagetable;
+}
+```
+
+这个函数的作用非常简单：接受一个进程 p 作为参数，创建一个属于它的用户页表。但要想讲清楚这个函数，我觉得必须先把 trampoline 和 trapframe 两个概念搞清楚，不然根本看不懂两个 mappages 在干嘛。
+
+**trampoline**：trampoline 前面说过了，就是 kernel/trampoline.S 这段汇编代码本身，专门用来处理用户态和内核态切换时的有关工作。这段汇编代码经过：汇编 -> 链接 -> 装载 之后，会变成一串机器指令，被放进**内存中的某个物理页里**
+
+**trapframe**：trapframe 是一个结构体，它是一页专门留出来的内存，里面存的是用户寄存器的值，返回用户态时要恢复的状态，以及再次进入内核时要用到的信息
+
+
+所以，这个函数的意思是：**对于创建出来的进程 p，为它创建一个用户页表。通过两个 mappages，先将 TRAMPOLINE 这个虚拟地址映射到 trampoline 这段汇编代码实际存储的物理地址上，再将 TRAPFRAME 这个虚拟地址映射到 p->trapframe 这个结构体的物理地址上。前者是切换代码，后者是保存切换时的寄存器现场。**
+
+我们来模拟一次 trap 发生的全过程：
+
+**发生前**，CPU 用这个进程的用户页表，用户页表里已经有：
+- TRAMPOLINE -> trampoline 代码页
+- TRAPFRAME -> 这个进程自己的 trapframe 页
+
+**刚发生**：CPU 跳到 TRAMPOLINE 对应的代码开始执行，这段代码把用户寄存器保存到 TRAPFRAME，再切到内核页表，再跳进 usertrap()。usertrap() 里面有段代码你肯定会非常熟悉～：
+
+```c
+if(r_scause() == 8){
+    // system call
+
+    if(p->killed)
+      exit(-1);
+
+    // sepc points to the ecall instruction,
+    // but we want to return to the next instruction.
+    p->trapframe->epc += 4;
+
+    // an interrupt will change sstatus &c registers,
+    // so don't enable until done with those registers.
+    intr_on();
+
+    syscall();
+  }
+```
+
+这就是说，如果 trap 发生的原因是因为需要调用系统调用，那么就调用 syscall，这就是我们前面两章讲过的知识了。
+
+**返回用户态时**：内核再跳回 trampoline 的 userret，切回用户页表，从 TRAPFRAME 恢复寄存器
+，再 sret 回到用户态
+
+### exec
+
+exec 用来在一个进程中运行另一个程序时被使用。exec 不创建新进程，它是把“当前进程”的用户地址空间整个换成一个新程序。进程始终是那个进程，pid 不变，但是该进程在用户空间中的代码，数据，栈，入口地址全部变了。
+
+常见的使用场景就是 shell 执行命令。shell 先 fork 复制出一个子进程，子进程再 exec("ls", argv) 或 exec("echo", argv)，把自己原来的用户地址空间整个换掉，变成 ls 或 echo，从而实现在一个进程中运行其它的程序，同时也会为这个新程序构造并使用新的用户地址空间。
+
+对一个进程来说，它的用户页表通常会描述这些内容：
+
+- 用户程序代码段
+- 用户数据段
+- 堆
+- 用户栈
+- TRAMPOLINE
+- TRAPFRAME
+
+代码段、数据段、堆、栈这些概念，并不是物理内存天然拥有的属性。物理内存本质上只是一大片按字节编号的存储空间，并不关心某块区域“代表什么”。这些更高层的语义，主要是操作系统通过虚拟地址空间布局、页表映射关系以及页权限位组织出来的；进程真正使用的是这样一个被操作系统解释和组织过的用户地址空间。
+
+而我们知道，前面说过的 proc_pagetable 函数只会创建好基础的 trampoline 和 trapframe，而真正把程序内容装进该进程的用户页表的，就是 exec 函数做的事情。接下来我们来具体看函数内部：
+
+```c
+int
+exec(char *path, char **argv)
+{
+  char *s, *last;
+  int i, off;
+  uint64 argc, sz = 0, sp, ustack[MAXARG], stackbase;
+  struct elfhdr elf;
+  struct inode *ip;
+  struct proghdr ph;
+  pagetable_t pagetable = 0, oldpagetable;
+  struct proc *p = myproc();
+
+  begin_op();
+
+  if((ip = namei(path)) == 0){
+    end_op();
+    return -1;
+  }
+  ilock(ip);
+
+  // Check ELF header
+  if(readi(ip, 0, (uint64)&elf, 0, sizeof(elf)) != sizeof(elf))
+    goto bad;
+  if(elf.magic != ELF_MAGIC)
+    goto bad;
+
+  if((pagetable = proc_pagetable(p)) == 0)
+    goto bad;
+
+  // Load program into memory.
+  for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
+    if(readi(ip, 0, (uint64)&ph, off, sizeof(ph)) != sizeof(ph))
+      goto bad;
+    if(ph.type != ELF_PROG_LOAD)
+      continue;
+    if(ph.memsz < ph.filesz)
+      goto bad;
+    if(ph.vaddr + ph.memsz < ph.vaddr)
+      goto bad;
+    uint64 sz1;
+    if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
+      goto bad;
+    sz = sz1;
+    if((ph.vaddr % PGSIZE) != 0)
+      goto bad;
+    if(loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz) < 0)
+      goto bad;
+  }
+  iunlockput(ip);
+  end_op();
+  ip = 0;
+
+  p = myproc();
+  uint64 oldsz = p->sz;
+
+  // Allocate two pages at the next page boundary.
+  // Use the second as the user stack.
+  sz = PGROUNDUP(sz);
+  uint64 sz1;
+  if((sz1 = uvmalloc(pagetable, sz, sz + 2*PGSIZE)) == 0)
+    goto bad;
+  sz = sz1;
+  uvmclear(pagetable, sz-2*PGSIZE);
+  sp = sz;
+  stackbase = sp - PGSIZE;
+
+  // Push argument strings, prepare rest of stack in ustack.
+  for(argc = 0; argv[argc]; argc++) {
+    if(argc >= MAXARG)
+      goto bad;
+    sp -= strlen(argv[argc]) + 1;
+    sp -= sp % 16; // riscv sp must be 16-byte aligned
+    if(sp < stackbase)
+      goto bad;
+    if(copyout(pagetable, sp, argv[argc], strlen(argv[argc]) + 1) < 0)
+      goto bad;
+    ustack[argc] = sp;
+  }
+  ustack[argc] = 0;
+
+  // push the array of argv[] pointers.
+  sp -= (argc+1) * sizeof(uint64);
+  sp -= sp % 16;
+  if(sp < stackbase)
+    goto bad;
+  if(copyout(pagetable, sp, (char *)ustack, (argc+1)*sizeof(uint64)) < 0)
+    goto bad;
+
+  // arguments to user main(argc, argv)
+  // argc is returned via the system call return
+  // value, which goes in a0.
+  p->trapframe->a1 = sp;
+
+  // Save program name for debugging.
+  for(last=s=path; *s; s++)
+    if(*s == '/')
+      last = s+1;
+  safestrcpy(p->name, last, sizeof(p->name));
+    
+  // Commit to the user image.
+  oldpagetable = p->pagetable;
+  p->pagetable = pagetable;
+  p->sz = sz;
+  p->trapframe->epc = elf.entry;  // initial program counter = main
+  p->trapframe->sp = sp; // initial stack pointer
+  proc_freepagetable(oldpagetable, oldsz);
+
+  return argc; // this ends up in a0, the first argument to main(argc, argv)
+
+ bad:
+  if(pagetable)
+    proc_freepagetable(pagetable, sz);
+  if(ip){
+    iunlockput(ip);
+    end_op();
+  }
+  return -1;
+}
+```
+
+- pagetable：新的用户页表，后面会替换旧页表
+- p：当前进程
+- elf：ELF 文件头
+- ph：某个程序段的头
+- sz：新地址空间当前已经扩展到多大
+- sp：新用户栈顶
+
+首先找到找到要执行的程序文件的 inode，如果找到了就加锁准备读它。在将其读到 elf 变量中之后，检查是否合法。这里介绍一下 ELF，不然 exec 有些地方看不懂。
+
+**ELF** 全称是：Executable and Linkable Format，即所谓的可执行文件。它规定一个程序文件在磁盘上该怎么组织，哪些部分是代码，哪些部分是数据，程序应该从哪里开始执行，哪些内容应该被装到内存的哪些虚拟地址。文件不是想装进内存就能装进内存的，必须要按 ELF 的格式才能正确的装载。而其中 ELF header 记录了程序文件的元信息，而 **program header**，即 ph，可以被理解为该程序文件中的某一段内容，要被装到虚拟地址 vaddr 开始的位置，装载大小是多少，权限是什么。
+
+接着创建用户页表，这里用到了我们之前讲过的 proc_pagetable 函数。此时这张页表里面只有 TRAMPOLINE 和 TRAPFRAME，**还没有程序代码，数据和栈**。
+
+接着开始 for 遍历 ELF 的各个程序段，开始循环读取 program header，最终只会把可加载的程序段装载到内存中。
+
+接下来这段代码是第一个关键点：
+```c
+uint64 sz1;
+if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
+	goto bad;
+sz = sz1;
+```
+
+根据当前这个段最终要占据的虚拟地址范围（从 sz 扩展到 ph.vaddr + ph.memsz），调用 uvmalloc，在新页表中为这段虚拟地址范围分配物理页并建立映射，并更新原来的 sz。**注意：uvmalloc 只是分配了该程序段所需要的内存的物理页（因为程序文件本身是存储在磁盘中的，需要将其加载到内存中才能执行），并且在新页表中建立了映射，但是在用户页表中还没有任何实际的内容**。下面是 uvmalloc 函数的具体实现：
+```c
+// Allocate PTEs and physical memory to grow process from oldsz to
+// newsz, which need not be page aligned.  Returns new size or 0 on error.
+uint64
+uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
+{
+  char *mem;
+  uint64 a;
+
+  if(newsz < oldsz)
+    return oldsz;
+
+  oldsz = PGROUNDUP(oldsz);
+  for(a = oldsz; a < newsz; a += PGSIZE){
+    mem = kalloc();
+    if(mem == 0){
+      uvmdealloc(pagetable, a, oldsz);
+      return 0;
+    }
+    memset(mem, 0, PGSIZE);
+    if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+      kfree(mem);
+      uvmdealloc(pagetable, a, oldsz);
+      return 0;
+    }
+  }
+  return newsz;
+}
+```
+
+而 `loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz)` 这一行代码通过 loadseg 函数，才将程序段真正拷贝到用户页表所映射的物理页中去。loadseg 函数是这样的：
+
+```c
+// Load a program segment into pagetable at virtual address va.
+// va must be page-aligned
+// and the pages from va to va+sz must already be mapped.
+// Returns 0 on success, -1 on failure.
+static int
+loadseg(pagetable_t pagetable, uint64 va, struct inode *ip, uint offset, uint sz)
+{
+  uint i, n;
+  uint64 pa;
+
+  for(i = 0; i < sz; i += PGSIZE){
+    pa = walkaddr(pagetable, va + i);
+    if(pa == 0)
+      panic("loadseg: address should exist");
+    if(sz - i < PGSIZE)
+      n = sz - i;
+    else
+      n = PGSIZE;
+    if(readi(ip, 0, (uint64)pa, offset+i, n) != n)
+      return -1;
+  }
+  
+  return 0;
+}
+```
+
+从 for 循环出来以后，代表程序文件，即 ELF 文件已经加载完成了，那么关闭 inode。随后，开始准备处理**用户栈**。通过 uvmalloc 函数分配**两张虚拟页**给用户栈和 guard page。为什么需要 guard page？就是为了**预防用户栈溢出后进程访问到不该访问的内存空间让整个系统崩溃，所以出现 guard page 兜底**。
+
+然后又是通过一段 for 循环，将参数字符串压入栈中，然后记住每个参数字符串放在用户栈里的地址，存到 ustack[]，相当于 ustack 数组中每一项都是指向参数字符串的一个指针，随后将 ustack 本身也拷贝进栈中。
+
+最后将参数字符串的指针数组 argv 的值保存进 p->trapframe->a1 中，保存程序名给 p->name，然后将旧页表替换为新页表，整个函数结束。
+
+
+exec() 在 kernel/exec.c 里做的事情非常明确：先打开 ELF 文件并校验，然后调用 proc_pagetable() 创建一张新的用户页表骨架；接着通过 uvmalloc() 和 loadseg() 把 ELF 的各个可加载段装进这张新页表；再额外分配两页作为 guard page 和用户栈，并用 copyout() 把 argv 参数压入新栈；最后把当前进程的 p->pagetable、trapframe->epc 和 trapframe->sp 替换成新的内容，使该进程下次返回用户态时从新程序入口开始执行。
+
+## 思考题
+
+最后让 GPT 出了一些思考题，检验一下页表这张到底学明白没～
+
+第一组：本质问题
+
+1. 为什么操作系统需要页表？如果没有页表，会出什么问题？
+   *答：页表存在的根本原因，是操作系统不希望程序直接面对物理内存，而是希望每个进程都工作在自己的虚拟地址空间中。这样一来，进程只需要使用虚拟地址，至于这些地址最终对应哪块物理内存，则由页表来翻译；同时，页表还能记录访问权限，从而实现进程之间的隔离、内存复用以及更安全的资源管理。*
+
+2. 虚拟地址和物理地址的区别是什么？为什么程序使用的是虚拟地址，而不是物理地址？
+   *答：虚拟地址和物理地址的区别在于：虚拟地址是程序运行时看到和使用的地址，属于进程自己的地址空间视角；物理地址是真实内存中的地址，属于硬件内存的视角。程序之所以不直接使用物理地址，是因为操作系统希望通过页表控制地址映射和访问权限，使程序能够拥有独立、连续、私有的内存空间错觉。*
+
+3. “一张用户页表”本质上在描述什么？它和“这个进程的用户地址空间”是什么关系？
+   *答：一张用户页表本质上描述的不是程序内容本身，而是该进程用户地址空间的组织规则。它说明了这个进程有哪些虚拟页，这些虚拟页分别映射到哪些物理页，以及这些页是否允许读、写、执行、是否允许用户态访问；因此，用户页表本质上是一张“用户空间地图”，而不是代码和数据本身的存储区。*
+
+4. 为什么说物理内存本身并不知道“代码段、数据段、堆、栈”这些概念？
+   *答：物理内存本身并不知道“这里是代码段、那里是栈、这里是堆”这些概念，因为从物理内存的角度看，它只是一大片按字节编号的存储单元。代码段、数据段、堆、栈这些更高层的语义，主要是操作系统通过虚拟地址空间布局、页表映射关系以及权限位组织出来的，进程真正看到的是一个被解释和安排过的用户地址空间。*
+
+5. 为什么同一个虚拟地址，在不同进程里可以对应不同的物理内存？
+   *答：同一个虚拟地址在不同进程里可以对应不同的物理内存，是因为每个进程都拥有自己的用户页表。CPU 在运行某个进程时，会按照该进程当前使用的页表去翻译虚拟地址，因此即使两个进程都访问同样的虚拟地址，只要它们页表中的映射关系不同，最终得到的物理地址就会不同，这也正是进程地址空间隔离的核心机制。*
+
+第二组：结构理解
+
+6. 为什么页表不能设计成一张巨大的单级表，而要做成多级页表？
+   *答：一个 64 位的虚拟地址，实际使用的可能就只有 39 位，这 39 位中有 12 位用来表示 offset，即用来再确定物理页后在物理页中定位物理地址。那么剩下的 $39 - 12 = 27$ 位就会用来表示 VPN，一个进程理论上会有 $2^{27} - 1$ 个虚拟页，那么一个虚拟页对应一个 8 字节的 PTE 的话，一个进程就需要 1GB 的虚拟页表空间，这就太浪费了。所以多级页表将 27 位进一步拆分，比如三级页表中实际表达 PPN 的只有 9 位，这样就极大地压缩了虚拟页的个数。*
+
+7. PTE 的本质是什么？为什么它既要记录地址信息，又要记录权限信息？
+8. 为什么页表里记录的是“虚拟页 -> 物理页”的关系，而不是“每个字节 -> 每个字节”的关系？
+9. 什么叫“页内偏移 offset”？为什么它不需要单独存进页表里？
+10. 为什么说“页表不是存程序内容的地方，而是存映射规则的地方”？
+
+第三组：运行时理解
+
+11. CPU 在运行一个进程时，页表是如何参与工作的？进程自己会不会主动去“查页表”？
+12. satp 的作用是什么？为什么它对“当前到底在用哪张页表”这么关键？
+13. 为什么 trap 进出内核时必须切换页表？如果不切，会出什么问题？
+14. TRAMPOLINE 和 TRAPFRAME 分别解决了什么问题？为什么它们和普通代码段/数据段不一样？
+15. 为什么 exec() 能把“当前进程”变成“另一个程序”，却不需要创建新进程？
+
+第四组：真正检验理解的题
+
+16. 如果一个进程的用户页表里没有映射某个虚拟页，而程序却访问了它，会发生什么？这背后是谁发现的问题？
+17. 为什么说“同一页物理内存可以被解释成不同东西”，比如有时是空闲页，有时是页表页，有时是 trapframe？
+18. 为什么“拥有页表”并不等于“页表自动生效”？
+19. 从操作系统整体视角看，页表提供给进程的最核心的“错觉”是什么？
+20. 如果让你一句话概括页表在操作系统中的角色，你会怎么说？

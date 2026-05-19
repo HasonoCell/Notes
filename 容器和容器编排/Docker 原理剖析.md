@@ -477,7 +477,7 @@ namespace 对于容器一个至关重要的 ns 就是 netns。为容器进程创
 
 那如果这台物理机上创建了不止一个 netns 呢？如果全都采用 veth 建立点对点连接，那么整个网络拓扑结构会像蜘蛛网一样十分复杂并且无法实现消息的广播。**linux bridge 虚拟交换机**就解决了这个问题，veth pair 的一端仍然留在新的 netns 中，另一端则插入到宿主机创建的 linux bridge 上，这样 netns 不仅可以互相 ping 通，还能通过宿主机的 NAT 规则，一起共享宿主机的物理网卡去访问互联网了。
 
-![](assets/Docker%20原理剖析/file-20260510150006554.png)
+![](assets/Docker%20原理剖析/file-20260519163843955.png)
 
 可以看见图中创建了一个 linux bridge，netns 的 veth 就不再直接连接 host netns 了，而是直接连接 bridge。那么这时候宿主机如何通过 bridge 访问 netns 呢？它们两个之间又没有 veth 相连。很简单，给这个 bridge 分配一个 IP 地址，把这个虚拟 bridge 和与其相连的 netns 视作一个真正的局域网，进行正常的网络通信即可。假设 `netns1` (IP: 10.0.0.2) 想要 Ping `netns2` (IP: 10.0.0.3)，`netns1` 只知道目标 IP，不知道 MAC 地址。于是它发出一个 ARP 广播包，顺着 `veth pair` 传到了 bridge。 bridge 收到广播包后，会像真实的交换机一样，把这个包复制并发送到所有其他插在它上面的端口（发给 `netns2`、`netns3` 和 `host`）。`netns2` 收到广播，发现是在找自己的 IP，于是回复自己的 MAC 地址给 bridge。bridge 记下 `netns2` 在哪个端口，并把回应转给 `netns1`。之后 `netns1` 和 `netns2` 之间真正的 Ping 数据包（ICMP），就会被 bridge 直接且高效地转发，不再需要广播（因为 bridge 内部已经生成了 MAC 地址表）。
 

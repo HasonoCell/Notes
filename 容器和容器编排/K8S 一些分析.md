@@ -70,7 +70,7 @@ Worker Node 负责真正运行容器化的应用。
 
 我们平常在 worker node 上主要就通过 `kubectl` 命令控制一个集群以及所属节点。
 
-![](assets/K8S%20一些分析/file-20260515110414998.png)
+![](assets/K8S%20一些分析/file-20260519163903105.png)
 
 # 一些底层原理
 
@@ -96,7 +96,7 @@ spec:
 
 这里所谓的 infra 容器**仅限于**实现 CRI 接口的是 Docker，即 dockershim；如果是别的容器引擎实现的 CRI，比如 Kata Containers，它的 CRI 实现就会直接创建出一个轻量级虚拟机来充当 Pod。
 
-![](assets/K8S%20一些分析/file-20260515110414999.png)
+![](assets/K8S%20一些分析/file-20260519163903107%201.png)
 
 # Informer
 

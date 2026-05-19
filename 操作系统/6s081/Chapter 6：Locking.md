@@ -1,0 +1,146 @@
+# Knowledge
+
+开头介绍了并发在现代操作系统和多核心 CPU 中是很常见的事情。而“锁”只是实现并发控制的一种广泛被使用的方式，而不是唯一方式。锁是一种易于理解的并发控制机制，但锁的缺点是它们会限制性能，因为它们会串行化并发操作。本章主要介绍 xv6 如何实现和使用锁。
+
+
+acquire 和 release 之间的代码，叫做 critical section（临界区）。
+
+```c
+acquire(&listlock);
+l->next = list;
+list = l;
+release(&listlock);
+```
+
+锁保护的不是代码本身，而是被共享的变量。更高级的内核设计会专门为了减少锁竞争去设计数据结构，从而避免锁带来的性能问题。锁的粒度也很值得考量，因为给不需要锁的地方加锁会导致本来可以并行执行的地方串行化。
+
+xv6 有自旋锁和睡眠锁两种锁。先来看看自旋锁的实现：
+
+```c
+// Mutual exclusion lock.
+struct spinlock {
+  uint locked;       // Is the lock held?
+
+  // For debugging:
+  char *name;        // Name of lock.
+  struct cpu *cpu;   // The cpu holding the lock.
+};
+```
+
+所谓 spinlock，核心特点就是：如果锁被别的 CPU 拿着，那么当前 CPU 不休眠，而是在原地循环重试，这就叫 spin。其中的 locked 字段当锁可用时为 0，锁被持有时为非 0。自旋锁非常适合临界区较短或者不值得切换 CPU 状态的场景。
+
+我们不能直接修改 lk->locked 这个字段，因为无法保证 C 语言在并发状态下修改操作的原子性，其根本原因是内存中保存的变量都能被不同的 CPU 核心读到然后修改，所以 xv6 使用了 RISC-V 中的一条指令 amoswap，它的作用是：
+
+- 读内存地址 a 的旧值
+- 把寄存器 r 的值写到地址 a
+- 同时把旧值放回寄存器 r
+
+而且这个过程是原子完成的，amoswap 由硬件保证读-改-写是一个不可分割的原子操作，因此不会出现两个 CPU 同时把同一把锁“抢到手”的情况。
+
+接着我们来看看 acquire 函数的实现:
+
+```c
+// Acquire the lock.
+// Loops (spins) until the lock is acquired.
+void
+acquire(struct spinlock *lk)
+{
+  push_off(); // disable interrupts to avoid deadlock.
+  if(holding(lk))
+    panic("acquire");
+
+  // On RISC-V, sync_lock_test_and_set turns into an atomic swap:
+  //   a5 = 1
+  //   s1 = &lk->locked
+  //   amoswap.w.aq a5, a5, (s1)
+  while(__sync_lock_test_and_set(&lk->locked, 1) != 0)
+    ;
+
+  // Tell the C compiler and the processor to not move loads or stores
+  // past this point, to ensure that the critical section's memory
+  // references happen strictly after the lock is acquired.
+  // On RISC-V, this emits a fence instruction.
+  __sync_synchronize();
+
+  // Record info about lock acquisition for holding() and debugging.
+  lk->cpu = mycpu();
+}
+```
+
+可以看见 acquire 函数并没有直接使用 amoswap 指令，而是使用了 sync_lock_test_and_set 这个函数，它的逻辑是：把 1 原子地写进 lk->locked，同时返回原来的旧值。于是：
+
+- 如果旧值是 0，说明原来没人持锁，当前 CPU 现在成功拿到了锁
+- 如果旧值是 1，说明别人已经拿着锁，当前 CPU 这次没拿到，就继续在 while 循环中重试，也就是原地旋转。
+
+同样，release 也不能简单依赖普通赋值把 locked 置 0，而是使用带原子语义的 sync_lock_release 来安全释放锁。
+
+教材中对不同粒度的锁的介绍我觉得挺好的，故摘录：
+
+> 作为粗粒度锁的示例，xv6 的 kalloc.c 分配器具有受单个锁保护的单个空闲列表。如果不同 CPU 上的多个进程尝试同时分配物理页，则每个进程都必须通过在 acquire 中旋转来等待轮到它。旋转会浪费 CPU 时间，因为它不是有用的工作。如果锁竞争浪费了很大一部分 CPU 时间，也许可以通过更改分配器设计来提高性能，**使其具有多个空闲列表，每个列表都有自己的锁，以允许真正的并行分配。** 
+> 
+> 作为细粒度锁的一个示例，xv6 对每个文件都有一个单独的锁，因此操作不同文件的进程通常可以继续执行而无需等待彼此的锁。如果希望允许进程同时写入同一文件的不同区域，则可以使文件锁定方案变得更加细粒度。最终，锁粒度决策需要由性能测量和复杂性考虑来驱动。
+
+关于如何避免**死锁**，xv6 没有复杂的调度算法，实现方式是要求代码路径一致，比如有两个锁 A 和 B，路径 T1 是先 A 后 B，T2 是先 B 后 A，这样就会造成死锁，所以一种避免的方式是强制所有路径要么是 T1，要么是 T2。xv6 通过固定的代码路径和锁嵌套关系，形成了隐式的锁顺序约束。比如拥有最长**锁嵌套顺序**的文件系统：
+
+![](assets/Chapter%206：Locking/file-20260519163223506.png)
+
+此外 consoleintr.c 中获取进程的锁时也要求先获取 cons 的锁。同时，xv6 是不支持**可重入锁**的，比如 acquire 函数在刚进入时就会检查是否持有锁（即是否是重入），如果是直接 panic。比如这样一段函数：
+
+```c
+f() {
+    acquire(&lock);
+    if(data == 0){
+        call_once();   // 期望只被执行一次
+        h();
+        data = 1;
+    }
+    release(&lock);
+}
+
+g() {
+    acquire(&lock);
+    if(data == 0){
+        call_once();
+        data = 1;
+    }
+    release(&lock);
+}
+```
+
+call_once 语义上将仅被调用一次：由 f 或 g 调用，但不能同时由两者调用。但是如果允许重入锁，并且 h 恰好调用 g，call_once 将被调用两次；如果不允许重入锁，则 h 调用 g 会导致死锁，这显然也不行。所以最好的方式是直接 panic，避免隐式出错。
+
+此外，**同一个 CPU 上也可能发生死锁**。当一个 spinlock 同时会被普通内核线程和中断处理程序（interrupt handler，这里 interrupt 是之前讲过的 trap 的一种情况）使用时，如果某个 CPU 在持锁期间又被同一个 CPU 上的中断打断，就可能出现死锁：中断处理程序等待锁释放，而持锁线程又被中断打断无法继续运行。为了避免这种情况，xv6 规定 CPU 在持有任何 spinlock 时都必须关闭本 CPU 的中断。acquire() 会先调用 push_off() 再尝试拿锁，release() 则必须先释放锁再调用 pop_off() 恢复中断状态；同时 push_off/pop_off 还负责处理多层嵌套临界区，只有当最外层临界区退出时才真正恢复中断。
+
+教材中还提到了一个叫做**内存屏障**的概念，主要就是说源码顺序和 CPU 执行的指令顺序不是完全一致的，编译器为了性能可能会调整指令顺序，CPU 也可能乱序执行，而如果临界区因为前面的原因而被打乱的话就会出现并发风险，所以会有一个内存屏障，比如 acquire 中使用的 sync_synchronize() 函数，来确保该屏障之前和之后两部分的相对位置不会变化。
+
+自旋锁适合短临界区，因为 CPU 在原地自旋的时间不会很长，但如果临界区很长，比如要等磁盘 I/O，自旋锁就不合适了；这时 xv6 用**睡眠锁**来“等待时睡眠”，而不是一直自旋浪费 CPU。睡眠锁的好处在于：如果某个锁可能会被长时间持有，那么其他进程在尝试获取该锁时，如果发现锁已被占用，就可以先进入睡眠而不是忙等自旋。这样，当前 CPU 就可以去执行别的任务，而不会浪费时间空转。等持锁进程释放睡眠锁后，内核再 wakeup 等待者，被唤醒的进程之后重新被调度上 CPU，再继续尝试获取锁并执行后续操作。
+
+```c
+// Long-term locks for processes
+struct sleeplock {
+  uint locked;       // 标志位
+  struct spinlock lk; //内部自旋锁结构，保护内部状态
+  
+  // For debugging:
+  char *name;        // 锁的名称
+  int pid;           // 持有睡眠锁的进程的 pid
+};
+```
+
+睡眠锁可以看作是在自旋锁的基础上实现的，因为 locked，pid 这些字段仍然需要锁的保护来避免并发状态下的共享风险。而下面的 acquiresleep 的逻辑就是，先持有该睡眠锁内部的自旋锁，从而实现对 locked，pid 状态的保护，如果该睡眠锁被持有，那么就一直 sleep 让当前进程睡眠，sleep 内部会原子地释放之前持有的内部自旋锁，被唤醒后重新获取该锁。
+
+```c
+void
+acquiresleep(struct sleeplock *lk)
+{
+  acquire(&lk->lk);
+  while (lk->locked) {
+    sleep(lk, &lk->lk);
+  }
+  lk->locked = 1;
+  lk->pid = myproc()->pid;
+  release(&lk->lk);
+}
+```
+
+最后，其实像 Go 的 sync.Mutex 和 xv6 的锁在抽象上都用于互斥访问共享资源，但 Go 的锁主要是用户态/运行时层的并发工具，而 xv6 的锁是内核层保护系统数据结构的同步原语；它们共同依赖的都是底层基础都是硬件原子操作和内存屏障。
