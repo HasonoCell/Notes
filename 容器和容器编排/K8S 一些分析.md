@@ -206,3 +206,33 @@ Scheduler 进程的内存里，跑着一个监听 Pod 的 Informer。它的 Refl
 4. **EventHandler & WorkQueue**：触发回调，将该 Pod 的 Key 塞进 Kubelet 的内部处理队列（通常叫 `syncLoop` 队列）。
     
 5. **执行发包 (Worker)**：Kubelet 的 Worker 协程取出 Key，从本地 Indexer 拿到 Pod 的详细参数（要拉什么镜像，配什么网络）。它不再请求 API Server，而是**直接向下调用本机的 CRI（容器运行时，比如你写的 Covet）和 CNI（网络插件）**，在 Linux 内核里执行真正的 `clone`、`setns`、`iptables` 操作，最终拉起真实的容器进程！
+
+# 如何设计一个 API 对象
+
+```yaml
+apiVersion: apps/v1          # API Group 和版本
+kind: Deployment             # 对象类型
+metadata:
+  name: my-app               # 元数据：名称
+  namespace: default         # 元数据：命名空间
+  # 1. Label 用于标识和筛选 
+  labels: 
+    app: web-server 
+    env: production 
+  # 2. Annotation 用于存储配置和辅助信息 
+  annotations: 
+    deployment.kubernetes.io/revision: "3" 
+    build.version: "v1.2.4-alpha" 
+    description: "This is a frontend web server managed by DevOps team." 
+    # 甚至可以存放转义后的 JSON 数据 
+    my-tool-config: '{"retry": 3, "timeout": "5s"}'
+spec:                        # 期望状态 (Spec)
+  replicas: 3
+  selector:
+    matchLabels:
+      app: my-app
+...
+status:                      # 实际状态 (Status) - 由系统填充
+  availableReplicas: 3
+
+```
