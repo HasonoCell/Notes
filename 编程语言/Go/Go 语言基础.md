@@ -799,3 +799,89 @@ func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
 	f(w, r)
 }
 ```
+
+# goroutine 的睡眠和唤醒
+
+## 使用 Channel 
+
+channel 本质上就是一种信号传递机制。当你从一个空的 channel 读取数据时，当前 goroutine 会立即睡眠（阻塞）；当其他 goroutine 向这个 channel 写入数据（或关闭它）时，睡眠的 goroutine 就会被唤醒。
+
+```Go
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func worker(done chan bool) {
+	fmt.Println("Worker: 准备就绪，开始睡眠等待唤醒信号...")
+	
+	// 阻塞在此，goroutine 进入等待状态 (睡眠)
+	<-done 
+	
+	fmt.Println("Worker: 收到信号！已被唤醒，开始工作！")
+}
+
+func main() {
+	done := make(chan bool)
+
+	go worker(done)
+
+	time.Sleep(2 * time.Second) // 模拟主线程做其他事情
+	fmt.Println("Main: 发送唤醒信号...")
+	
+	// 向 channel 发送数据，唤醒 worker
+	done <- true 
+	
+	time.Sleep(1 * time.Second) // 等待 worker 打印完毕
+}
+```
+
+如果想一次性唤醒所有等待的 goroutine，可以直接调用 `close(done)`，所有阻塞接收该 channel 的 goroutine 都会立刻被唤醒并收到零值。
+
+## 使用 sync.Cond (条件变量)
+
+`sync.Cond` 是 Go 标准库专门用来发出“信号”以唤醒 goroutine 的原语。它包含了 `Wait()`（睡眠等待）、`Signal()`（唤醒一个）和 `Broadcast()`（唤醒所有）方法。
+
+```Go
+package main
+
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
+func main() {
+	var mu sync.Mutex
+	cond := sync.NewCond(&mu)
+
+	for i := 1; i <= 3; i++ {
+		go func(id int) {
+			cond.L.Lock()
+			fmt.Printf("Goroutine %d: 进入睡眠，等待唤醒信号\n", id)
+			
+			// Wait 会释放锁并挂起 goroutine，直到被 Signal 或 Broadcast 唤醒
+			cond.Wait() 
+			
+			fmt.Printf("Goroutine %d: 收到信号被唤醒！\n", id)
+			cond.L.Unlock()
+		}(i)
+	}
+
+	time.Sleep(2 * time.Second)
+	
+	fmt.Println("--- Main: 发送单个唤醒信号 (Signal) ---")
+	cond.Signal() // 随机唤醒一个等待的 goroutine
+
+	time.Sleep(2 * time.Second)
+	
+	fmt.Println("--- Main: 发送广播信号 (Broadcast)，唤醒剩余所有 ---")
+	cond.Broadcast() // 唤醒所有等待的 goroutine
+
+	time.Sleep(1 * time.Second)
+}
+```
+
+在 Go 中，**阻塞并不意味着浪费 CPU 资源**。当 goroutine 因为等待 channel 或系统信号而阻塞时，Go 的运行时调度器 (Runtime Scheduler) 会把该 goroutine 置为 `waiting` 状态，并将底层的系统线程分配给其他需要干活的 goroutine。等到信号到来时，它又会被重新放入可运行队列 (`runnable`) 中等待执行。
