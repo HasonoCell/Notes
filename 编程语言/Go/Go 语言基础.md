@@ -816,21 +816,17 @@ import (
 
 func worker(done chan bool) {
 	fmt.Println("Worker: 准备就绪，开始睡眠等待唤醒信号...")
-	
 	// 阻塞在此，goroutine 进入等待状态 (睡眠)
 	<-done 
-	
 	fmt.Println("Worker: 收到信号！已被唤醒，开始工作！")
 }
 
 func main() {
 	done := make(chan bool)
-
 	go worker(done)
 
 	time.Sleep(2 * time.Second) // 模拟主线程做其他事情
 	fmt.Println("Main: 发送唤醒信号...")
-	
 	// 向 channel 发送数据，唤醒 worker
 	done <- true 
 	
@@ -855,33 +851,32 @@ import (
 
 func main() {
 	var mu sync.Mutex
-	cond := sync.NewCond(&mu)
-
+	cond := sync.NewCond(&mu) // 基于锁实现
 	for i := 1; i <= 3; i++ {
 		go func(id int) {
 			cond.L.Lock()
 			fmt.Printf("Goroutine %d: 进入睡眠，等待唤醒信号\n", id)
-			
 			// Wait 会释放锁并挂起 goroutine，直到被 Signal 或 Broadcast 唤醒
 			cond.Wait() 
-			
 			fmt.Printf("Goroutine %d: 收到信号被唤醒！\n", id)
 			cond.L.Unlock()
 		}(i)
 	}
 
 	time.Sleep(2 * time.Second)
-	
 	fmt.Println("--- Main: 发送单个唤醒信号 (Signal) ---")
 	cond.Signal() // 随机唤醒一个等待的 goroutine
-
 	time.Sleep(2 * time.Second)
-	
 	fmt.Println("--- Main: 发送广播信号 (Broadcast)，唤醒剩余所有 ---")
 	cond.Broadcast() // 唤醒所有等待的 goroutine
 
 	time.Sleep(1 * time.Second)
 }
 ```
+
+
+所以 sync.Cond 适用于一写多读的原因是，首先 Cond 必须依赖 Mutex 或者 RWMutex，也就是锁来实现。当多个读者发现共享状态需要被修改时可以 Wait 住，然后写者在修改多个 goroutine 共享变量时需要先加锁，修改完释放锁，然后可以通过 Singal 或者 BroadCast 唤醒读者 goroutine，然后读者就可以开始读了。
+
+---
 
 在 Go 中，**阻塞并不意味着浪费 CPU 资源**。当 goroutine 因为等待 channel 或系统信号而阻塞时，Go 的运行时调度器 (Runtime Scheduler) 会把该 goroutine 置为 `waiting` 状态，并将底层的系统线程分配给其他需要干活的 goroutine。等到信号到来时，它又会被重新放入可运行队列 (`runnable`) 中等待执行。
