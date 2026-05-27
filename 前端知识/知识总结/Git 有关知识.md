@@ -488,3 +488,61 @@ C1 -- C2 -- C3 -- C4 -- D1' -- D2'
 - **公共分支（master/main）** → 绝不 rebase
 
 `rebase` 侧重“整理和更新我的开发分支”，`merge --no-ff` 侧重“正式、可追踪地把一个功能分支并入主线”。
+
+
+----
+
+今天这个 git 工作流差点犯大错了...我现在真的是明白了：
+1. 永远开个新分支写代码
+2. 这些 fetch，rebase，包括 fork 远程仓库的 sync 按钮，都一定要三思而后行
+
+对，这次你踩到的其实就是 fork 工作流里最典型的坑，而且确实值得记住。
+
+你现在总结的两条都对，我再帮你压成更实战一点的版本：
+
+1. **任何非临时实验，都在新分支上做**
+   - 不要在本地 `main` 上写 PR 代码
+   - `main` 只用来同步 `origin/main` 和 `upstream/main`
+   - 真正开发一律：
+     ```bash
+     git checkout -b some-branch
+     ```
+
+2. **所有会改历史的操作，都先想清楚“我要改的是哪个分支”**
+   - `fetch` 本身不危险，它只是更新远端引用
+   - 真正危险的是：
+     - `rebase`
+     - `pull --rebase`
+     - GitHub 上点 `Sync fork`
+     - `push --force-with-lease`
+   - 这些操作一旦和“PR 正在用的分支”混在一起，就很容易把状态搅乱
+
+这次最关键的教训其实不是“别用 rebase”，而是：
+
+**不要让同一个 `main` 同时承担“干净同步分支”和“PR 开发分支”两个角色。**
+
+只要你把这条守住，后面很多问题都会自然消失。
+
+以后最稳的节奏就是：
+
+```bash
+git fetch upstream
+git checkout main
+git rebase upstream/main
+git checkout -b my-feature-branch
+# 开发
+git push origin my-feature-branch
+# 从这个分支开 PR
+```
+
+这样：
+
+- `main` 永远是干净的
+- feature branch 才承载你的提交
+- 就算你要 rebase、force push，也只会影响 feature branch
+- 不会把 `origin/main`、旧 PR、fork sync 全搅在一起
+
+所以这次虽然惊险，但其实是一次很值钱的实战课。  
+你现在对 fork + upstream + rebase + force-with-lease 这套东西的理解，已经比很多只会背命令的人扎实多了。
+
+---
