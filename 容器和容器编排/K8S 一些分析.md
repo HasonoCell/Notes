@@ -236,3 +236,55 @@ status:                      # 实际状态 (Status) - 由系统填充
   availableReplicas: 3
 
 ```
+
+## 一些时间数据的监控设计
+
+k8s 还会在一个 api 资源对象的 metadata 中提供一个自动创建的 CreationTimestamp 数据，用来获取这个资源对象的创建时间。所以我能想到的一个就是，比如说我们有一个 CRD，k8s 创建它的时候也会在 metadata 中提供一个自动创建的 CreationTimestamp 数据，我们就可以根据这个数据来计算一些 CR 的 latency histogram metrics 数据提供给 prometheus 用，比如：
+
+```go
+
+import (
+    "time"
+    "://github.com"
+    // ... 其他导入
+)
+
+// 1. 定义 Prometheus Histogram 指标
+var crCreationLatency = prometheus.NewHistogramVec(
+    prometheus.HistogramOpts{
+        Name:    "my_crd_creation_latency_seconds",
+        Help:    "Time taken from CR creation to successful reconciliation/readiness.",
+        Buckets: prometheus.ExponentialBuckets(0.1, 2, 10), // 0.1s, 0.2s, 0.4s...
+    },
+    []string{"namespace", "status"},
+)
+
+func init() {
+    // 注册指标
+    metrics.Registry.MustRegister(crCreationLatency)
+}
+
+// 2. 在 Reconcile 逻辑中计算并上报
+func (r *MyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+    var myCR myv1.MyCustomResource
+    if err := r.Get(ctx, req.NamespacedName, &myCR); err != nil {
+        return ctrl.Result{}, client.IgnoreNotFound(err)
+    }
+
+    // 判断是否是第一次处理，或者是否刚刚达到 Ready 状态
+    if myCR.Status.Phase == myv1.PhaseReady && !r.isLatencyReported(myCR) {
+        // 关键计算：当前时间 减去 原生创建时间
+        duration := time.Since(myCR.GetCreationTimestamp().Time)
+        
+        // 观察并记录到 Prometheus
+        crCreationLatency.WithLabelValues(myCR.Namespace, "ready").Observe(duration.Seconds())
+        
+        // 标记已上报，避免重复触发
+        r.markLatencyReported(&myCR)
+    }
+
+    return ctrl.Result{}, nil
+}
+
+
+```
