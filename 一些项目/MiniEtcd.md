@@ -2,16 +2,16 @@
 
 **方向总览**
 
-| 方向 | Raft 管什么 | 简历价值 | 难度 |
-|---|---|---:|---:|
-| Raft 配置中心 / Mini etcd | key/value、lease、watch、CAS | 很直接，贴近 etcd | 中 |
-| 分布式任务调度器 | job 状态、worker 租约、调度决策 | 很好讲，也好演示 | 中高 |
-| 分布式对象存储 MDS | 文件、chunk、副本、节点元数据 | 最贴合存储系统 | 高 |
-| 分布式锁服务 | lock、lease、session | 小而精，容易做扎实 | 中 |
-| Raft 消息队列 | topic、partition、offset、ack | 有意思，但坑多 | 高 |
-| 分布式限流 / 配额系统 | quota、token bucket 配置、租约 | 工程感强 | 中 |
-| 分布式 Cron | cron spec、trigger、执行状态 | 比任务调度器更轻 | 中 |
-| Raft 元数据数据库 | schema、table metadata、placement | 偏数据库控制面 | 高 |
+| 方向                    | Raft 管什么                        |        简历价值 |  难度 |
+| --------------------- | ------------------------------- | ----------: | --: |
+| Raft 配置中心 / Mini etcd | key/value、lease、watch、CAS       | 很直接，贴近 etcd |   中 |
+| 分布式任务调度器              | job 状态、worker 租约、调度决策           |    很好讲，也好演示 |  中高 |
+| 分布式对象存储 MDS           | 文件、chunk、副本、节点元数据               |     最贴合存储系统 |   高 |
+| 分布式锁服务                | lock、lease、session              |   小而精，容易做扎实 |   中 |
+| Raft 消息队列             | topic、partition、offset、ack      |     有意思，但坑多 |   高 |
+| 分布式限流 / 配额系统          | quota、token bucket 配置、租约        |        工程感强 |   中 |
+| 分布式 Cron              | cron spec、trigger、执行状态          |    比任务调度器更轻 |   中 |
+| Raft 元数据数据库           | schema、table metadata、placement |     偏数据库控制面 |   高 |
 
 我最推荐你优先考虑这三个。
 
