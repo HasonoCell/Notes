@@ -1,6 +1,6 @@
 {
   "accentColor": "",
-  "cssTheme": "Tokyo Night",
+  "cssTheme": "GitHub Theme",
   "showViewHeader": true,
   "nativeMenus": true,
   "theme": "moonstone",
@@ -19,12 +19,14 @@
     "externel-link-icon",
     "scrollbar",
     "right-sidebar",
-    "mermaid"
+    "mermaid",
+    "inline-code"
   ],
   "showRibbon": true,
-  "textFontFamily": "Fira Code",
-  "interfaceFontFamily": "Fira Code",
-  "monospaceFontFamily": "Fira Code",
-  "baseFontSize": 17,
-  "baseFontSizeAction": true
+  "textFontFamily": "JetBrains Mono,Fira Code",
+  "interfaceFontFamily": "JetBrains Mono,Fira Code",
+  "monospaceFontFamily": "JetBrains Mono,Fira Code",
+  "baseFontSize": 14,
+  "baseFontSizeAction": true,
+  "translucency": true
 }
