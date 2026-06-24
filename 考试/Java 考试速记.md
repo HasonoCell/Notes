@@ -1,7 +1,21 @@
 
 # 杂
 
-`javac` 命令用来将 .java 代码编译为 .class 字节码；`java` 命令用来将 .class 字节码跑在 jvm 虚拟机上。
+- `javac` 命令用来将 .java 代码编译为 .class 字节码；`java` 命令用来将 .class 字节码跑在 jvm 虚拟机上。
+
+- `public` 开放给所有人，`protected` 仅对子类和同包开放，`private` 仅限类内部访问。
+
+- **重载**发生在同一个类中（方法名相同，参数不同），而 **覆写**发生在父子类之间（方法签名完全相同）。
+
+- `final`修饰符有多种作用：`final` 修饰的方法可以阻止被覆写；`final` 修饰的 class 可以阻止被继承；`final` 修饰的 field 必须在创建对象时初始化，随后不可修改。
+
+- 关于 Java 的多态（只有方法多态，不存在变量多态）：编译器会检查父类中有没有这个方法。如果没有，直接报错。在程序运行时，真正执行的是子类覆写后的方法。
+	- 成员变量：编译看左边，运行看左边。
+	- 成员方法：编译看左边（父类），运行看右边（子类）。
+
+- **抽象类表示“是不是（is-a）”的关系**（强调所属关系和代码复用），主要用于构建类的通用基础模板；而**接口表示“有没有（has-a）”的关系**（强调行为规范和解耦），主要用于定义不同类所共享的特征或能力
+
+- Java核心库提供的包装类型可以把基本类型包装为`class`；自动装箱和自动拆箱都是在编译期完成的（JDK>=1.5）；装箱和拆箱会影响执行效率，且拆箱时可能发生`NullPointerException`；包装类型的比较必须使用`equals()`；
 
 # 字符拼接为字符串
 
@@ -130,4 +144,186 @@ public class SortTest {
     }
 }
 
+```
+
+参数数组：
+```java
+class Person {
+    public void logNames(String... names) {
+        for (String name : names) {
+            System.out.println(name);
+        }
+    }
+}
+```
+
+构造方法：
+如果一个类没有定义构造方法，编译器会自动为我们生成一个默认构造方法，它没有参数，也没有执行语句
+```java
+public class Main {
+    public static void main(String[] args) {
+        Person p = new Person("Xiao Ming", 15);
+    }
+}
+
+class Person {
+    private String name;
+    private int age;
+
+    public Person(String name, int age) {
+        this.name = name;
+        this.age = age;
+    }
+}
+```
+
+子类的继承：
+```java
+class Student extends Person {
+    protected int score;
+
+    public Student(String name, int age, int score) {
+        super(); // 自动调用父类的构造方法
+        this.score = score;
+    }
+}
+```
+
+判断是否继承：
+```java
+Student s = new Student();
+System.out.println(s instanceof Person); // true
+System.out.println(s instanceof Student); // true
+```
+
+抽象类：
+```java
+abstract class Person {
+    public abstract void run();
+}
+
+class Student extends Person {
+    @Override
+    public void run() {
+        System.out.println("Student.run");
+    }
+}
+```
+
+接口：
+```java
+interface Person {
+    void run();
+    String getName();
+}
+
+
+class Student implements Person {
+    private String name;
+
+    public Student(String name) {
+        this.name = name;
+    }
+
+    @Override
+    public void run() {
+        System.out.println(this.name + " run");
+    }
+
+    @Override
+    public String getName() {
+        return this.name;
+    }
+}
+```
+
+静态字段：实例字段在每个实例中都有自己的一个独立“空间”，但是静态字段只有一个共享“空间”，所有实例都会共享该字段。
+```java
+class Person {
+    public String name;
+    public int age;
+    // 定义静态字段 number:
+    public static int number;
+}
+```
+
+字符串比较：Java 为了节省内存，有一块区域叫**字符串常量池**。不采用 new String 而是直接赋值时，`s3` 和 `s4` 指向了常量池中的同一个 `"Hello"` 对象，所以它们的内存地址是完全一样的。
+```java
+String s3 = "Hello";
+String s4 = "Hello";
+
+System.out.println(s3 == s4);      // 输出: true ！
+System.out.println(s3.equals(s4)); // 输出: true
+
+String s1 = new String("Hello");
+String s2 = new String("Hello");
+
+// == 比较地址：s1 和 s2 是 new 出来的两个独立对象，地址不同
+System.out.println(s1 == s2);      // 输出: false
+
+// equals() 比较内容：String 类重写了 equals()，只看字面值是否相同
+System.out.println(s1.equals(s2)); // 输出: true
+```
+
+枚举：通过`name()`获取常量定义的字符串，注意不要使用`toString()`；通过`ordinal()`返回常量定义的顺序（无实质意义）；
+```java
+public class Main {
+    public static void main(String[] args) {
+        Weekday day = Weekday.SUN;
+        if (day == Weekday.SAT || day == Weekday.SUN) {
+            System.out.println("Work at home!");
+        } else {
+            System.out.println("Work at office!");
+        }
+    }
+}
+
+enum Weekday {
+    SUN, MON, TUE, WED, THU, FRI, SAT;
+}
+```
+
+通过 record 关键字创建数据类：
+```java
+// Record
+public class Main {
+    public static void main(String[] args) {
+        Point p = new Point(123, 456);
+        System.out.println(p.x());
+        System.out.println(p.y());
+        System.out.println(p);
+    }
+}
+
+record Point(int x, int y) {}
+
+// Point 相当于：
+// final class Point extends Record {
+//     private final int x;
+//     private final int y;
+
+//     public Point(int x, int y) {
+//         this.x = x;
+//         this.y = y;
+//     }
+
+//     public int x() {
+//         return this.x;
+//     }
+
+//     public int y() {
+//         return this.y;
+//     }
+
+//     public String toString() {
+//         return String.format("Point[x=%s, y=%s]", x, y);
+//     }
+
+//     public boolean equals(Object o) {
+//         ...
+//     }
+//     public int hashCode() {
+//         ...
+//     }
+// }
 ```
