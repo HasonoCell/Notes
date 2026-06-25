@@ -26,7 +26,7 @@
   "textFontFamily": "JetBrains Mono,Fira Code",
   "interfaceFontFamily": "JetBrains Mono,Fira Code",
   "monospaceFontFamily": "JetBrains Mono,Fira Code",
-  "baseFontSize": 16,
+  "baseFontSize": 17,
   "baseFontSizeAction": true,
   "translucency": true
 }
