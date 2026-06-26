@@ -1,6 +1,24 @@
 
 # 杂
 
+![](assets/Java%20考试速记/file-20260626132555285.png)
+
+![](assets/Java%20考试速记/file-20260626132621582.png)
+
+![](assets/Java%20考试速记/file-20260626132658825.png)
+
+![](assets/Java%20考试速记/file-20260626133317302.png)
+
+![](assets/Java%20考试速记/file-20260626133440139.png)
+
+![](assets/Java%20考试速记/file-20260626133623056.png)
+
+这里 Throwable 的直接子类又分为 Error 和 Exception
+![](assets/Java%20考试速记/file-20260626133635193.png)
+
+FileReader 是文件字符流的读操作，InputStream 才是字节流的读操作
+![](assets/Java%20考试速记/file-20260626133753558.png)
+
 - `javac` 命令用来将 .java 代码编译为 .class 字节码；`java` 命令用来将 .class 字节码跑在 jvm 虚拟机上。
 
 - `public` 开放给所有人，`protected` 仅对子类和同包开放，`private` 仅限类内部访问。
@@ -16,6 +34,7 @@
 - **抽象类表示“是不是（is-a）”的关系**（强调所属关系和代码复用），主要用于构建类的通用基础模板；而**接口表示“有没有（has-a）”的关系**（强调行为规范和解耦），主要用于定义不同类所共享的特征或能力
 
 - Java核心库提供的包装类型可以把基本类型包装为`class`；自动装箱和自动拆箱都是在编译期完成的（JDK>=1.5）；装箱和拆箱会影响执行效率，且拆箱时可能发生`NullPointerException`；包装类型的比较必须使用`equals()`；
+
 
 # 字符拼接为字符串
 
@@ -177,7 +196,7 @@ class Person {
 }
 ```
 
-子类的继承：
+子类的继承：`super` 代表**父类对象的引用**（用于访问属性和方法），而 `super()` 是**调用父类的构造方法**。
 ```java
 class Student extends Person {
     protected int score;
@@ -196,7 +215,7 @@ System.out.println(s instanceof Person); // true
 System.out.println(s instanceof Student); // true
 ```
 
-抽象类：
+抽象类：抽象类中既有抽象方法又有非抽象方法
 ```java
 abstract class Person {
     public abstract void run();
@@ -238,6 +257,7 @@ class Student implements Person {
 ```
 
 静态字段：实例字段在每个实例中都有自己的一个独立“空间”，但是静态字段只有一个共享“空间”，所有实例都会共享该字段。
+静态方法就没啥好说的了，可以直接在一个类上调用。
 ```java
 class Person {
     public String name;
@@ -248,6 +268,8 @@ class Person {
 ```
 
 字符串比较：Java 为了节省内存，有一块区域叫**字符串常量池**。不采用 new String 而是直接赋值时，`s3` 和 `s4` 指向了常量池中的同一个 `"Hello"` 对象，所以它们的内存地址是完全一样的。
+![](assets/Java%20考试速记/file-20260626132530874.png)
+
 ```java
 String s3 = "Hello";
 String s4 = "Hello";
@@ -326,4 +348,493 @@ record Point(int x, int y) {}
 //         ...
 //     }
 // }
+```
+
+反射：
+```java
+import java.lang.reflect.Field;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        Person p = new Person("Xiao Ming");
+        System.out.println(p.getName()); // "Xiao Ming"
+        Class c = p.getClass();
+        Field f = c.getDeclaredField("name");
+        f.setAccessible(true);
+        f.set(p, "Xiao Hong");
+        System.out.println(p.getName()); // "Xiao Hong"
+    }
+    
+    // String对象:
+    String s = "Hello world";
+    // 获取String substring(int)方法，参数为int:
+    Method m = String.class.getMethod("substring", int.class);
+    // 在s对象上调用该方法并获取结果:
+    String r = (String) m.invoke(s, 6);
+    // 打印调用结果:
+	System.out.println(r); // "world"
+}
+
+class Person {
+    private String name;
+
+    public Person(String name) {
+        this.name = name;
+    }
+
+    public String getName() {
+        return this.name;
+    }
+}
+```
+
+list:
+```java
+import java.util.ArrayList;
+import java.util.List;
+
+public class Main {
+    public static void main(String[] args) {
+        List<String> list = new ArrayList<>();
+        list.add("apple"); // size=1
+        list.add("pear"); // size=2
+        list.add("apple"); // 允许重复添加元素，size=3
+        System.out.println(list.size());
+    }
+}
+
+```
+
+map:
+```java
+import java.util.HashMap;
+import java.util.Map;
+
+public class Main {
+    public static void main(String[] args) {
+        Map<String, Integer> map = new HashMap<>();
+        map.put("apple", 123);
+        map.put("pear", 456);
+        map.put("banana", 789);
+        for (String key : map.keySet()) {
+            Integer value = map.get(key);
+            System.out.println(key + " = " + value);
+        }
+    }
+}
+```
+
+set:
+```java
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) {
+        Set<String> set = new HashSet<>();
+        set.add("apple");
+        set.add("banana");
+        set.add("pear");
+        set.add("orange");
+        for (String s : set) {
+            System.out.println(s);
+        }
+    }
+}
+```
+
+queue:
+```java
+import java.util.LinkedList;
+import java.util.Queue;
+
+public class Main {
+    public static void main(String[] args) {
+        Queue<String> q = new LinkedList<>();
+        // 添加3个元素到队列:
+        q.offer("apple");
+        q.offer("pear");
+        q.offer("banana");
+        // 从队列取出元素:
+        System.out.println(q.poll()); // apple
+        System.out.println(q.poll()); // pear
+        System.out.println(q.poll()); // banana
+        System.out.println(q.poll()); // null,因为队列是空的
+    }
+}
+```
+
+文件：
+```java
+File file = new File("/path/to/file");
+if (file.createNewFile()) {
+    // 文件创建成功:
+    // TODO:
+    if (file.delete()) {
+        // 删除文件成功:
+    }
+}
+```
+
+输入流读文件:
+```java
+public void readFile() throws IOException {
+    try (InputStream input = new FileInputStream("src/readme.txt")) {
+        int n;
+        // read 方法每次读取 1B 大小的内容
+        while ((n = input.read()) != -1) {
+            System.out.println(n);
+        }
+    } // 编译器在此自动为我们写入finally并调用close()
+}
+
+public void readFile() throws IOException {
+    try (InputStream input = new FileInputStream("src/readme.txt")) {
+        // 定义1000个字节大小的缓冲区:
+        byte[] buffer = new byte[1000];
+        int n;
+        while ((n = input.read(buffer)) != -1) { // 读取到缓冲区
+            System.out.println("read " + n + " bytes.");
+        }
+    }
+}
+```
+
+输出流写文件：
+```java
+public void writeFile() throws IOException {
+    OutputStream output = new FileOutputStream("out/readme.txt");
+    output.write("Hello".getBytes("UTF-8")); // Hello
+    output.close();
+}
+```
+
+Files 工具类简化读写文件
+```java
+// 默认使用UTF-8编码读取:
+String content1 = Files.readString(Path.of("/path/to/file.txt"));
+// 按行读取并返回每行内容:
+List<String> lines = Files.readAllLines(Path.of("/path/to/file.txt"));
+
+// 写入二进制文件:
+byte[] data = ...
+Files.write(Path.of("/path/to/file.txt"), data);
+// 写入文本:
+Files.writeString(Path.of("/path/to/file.txt"), "文本内容...");
+// 按行写入文本:
+List<String> lines = ...
+Files.write(Path.of("/path/to/file.txt"), lines);
+```
+
+Java Swing:
+Java GUI 布局管理器最常用的是流式（FlowLayout）、边界（BorderLayout）、网格（GridLayout）、网格袋（GridBagLayout）和盒式（BoxLayout）布局
+```java
+import javax.swing.*;
+import java.awt.*;
+
+public class SwingDemo {
+    public static void main(String[] args) {
+        // 1. 创建顶层容器 JFrame
+        JFrame frame = new JFrame("Swing 事件处理示例");
+        frame.setSize(400, 200);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE); // 点叉时退出程序
+        frame.setLocationRelativeTo(null); // 居中显示
+
+        // 2. 创建中间容器 JPanel 并设置布局
+        JPanel panel = new JPanel();
+        panel.setLayout(new FlowLayout()); // 流式布局
+
+        // 3. 创建原子组件
+        JLabel label = new JLabel("请点击下方的按钮");
+        JButton button = new JButton("点我！");
+
+        // 4. Lambda 表达式写法（推荐，更简洁）
+        button.addActionListener(e -> {
+            label.setText("哈罗！按钮已被成功点击！");
+            button.setEnabled(false); // 点击后禁用按钮
+        });
+
+        // 5. 将组件组装到面板中
+        panel.add(label);
+        panel.add(button);
+
+        // 6. 将面板放入窗口并展现
+        frame.add(panel);
+        frame.setVisible(true);
+    }
+}
+```
+
+多线程:Java用`Thread`对象表示一个线程，通过调用`start()`启动一个新线程；一个线程对象只能调用一次`start()`方法；线程的执行代码写在`run()`方法中；线程调度由操作系统决定，程序本身无法决定调度顺序；`Thread.sleep()`可以把当前线程暂停一段时间。
+```java
+// 多线程
+public class Main {
+    public static void main(String[] args) {
+        Thread t = new Thread(new MyRunnable());
+        t.start(); // 启动新线程
+    }
+}
+
+class MyRunnable implements Runnable {
+    @Override
+    public void run() {
+        System.out.println("start new thread!");
+    }
+}
+```
+
+join 等待
+```java
+public class Main {
+    public static void main(String[] args) throws InterruptedException {
+        Thread t = new Thread(() -> {
+            System.out.println("hello");
+        });
+        System.out.println("start");
+        t.start(); // 启动t线程
+        t.join(); // 此处main线程会等待t结束
+        System.out.println("end");
+    }
+}
+```
+
+synchronized 加锁：
+```java
+public class Counter {
+    private int count = 0;
+
+	// 更简单的写法
+	// public synchronized void add(int n) { 锁住this
+	//    count += n;
+	// } 解锁
+
+
+    public void add(int n) {
+        synchronized(this) {
+            count += n;
+        }
+    }
+
+    public void dec(int n) {
+        synchronized(this) {
+            count -= n;
+        }
+    }
+
+    public int get() {
+        return count;
+    }
+}
+```
+
+线程池：
+```java
+// thread-pool
+import java.util.concurrent.*;
+
+public class Main {
+    public static void main(String[] args) {
+        // 创建一个固定大小的线程池:
+        ExecutorService es = Executors.newFixedThreadPool(4);
+        for (int i = 0; i < 6; i++) {
+            es.submit(new Task("" + i));
+        }
+        // 关闭线程池:
+        es.shutdown();
+    }
+}
+
+class Task implements Runnable {
+    private final String name;
+
+    public Task(String name) {
+        this.name = name;
+    }
+
+    @Override
+    public void run() {
+        System.out.println("start task " + name);
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+        }
+        System.out.println("end task " + name);
+    }
+}
+```
+
+tcp:
+服务端
+- 服务器端用`ServerSocket`监听指定端口；
+- 客户端使用`Socket(InetAddress, port)`连接服务器；
+- 服务器端用`accept()`接收连接并返回`Socket`；
+- 双方通过`Socket`打开`InputStream`/`OutputStream`读写数据；
+- 服务器端通常使用多线程同时处理多个客户端连接，利用线程池可大幅提升效率；
+- `flush()`用于强制输出缓冲区到网络。
+```java
+public class Server {
+    public static void main(String[] args) throws IOException {
+        ServerSocket ss = new ServerSocket(6666); // 监听指定端口
+        System.out.println("server is running...");
+        for (;;) {
+            Socket sock = ss.accept();
+            System.out.println("connected from " + sock.getRemoteSocketAddress());
+            Thread t = new Handler(sock);
+            t.start();
+        }
+    }
+}
+
+class Handler extends Thread {
+    Socket sock;
+
+    public Handler(Socket sock) {
+        this.sock = sock;
+    }
+
+    @Override
+    public void run() {
+        try (InputStream input = this.sock.getInputStream()) {
+            try (OutputStream output = this.sock.getOutputStream()) {
+                handle(input, output);
+            }
+        } catch (Exception e) {
+            try {
+                this.sock.close();
+            } catch (IOException ioe) {
+            }
+            System.out.println("client disconnected.");
+        }
+    }
+
+    private void handle(InputStream input, OutputStream output) throws IOException {
+        var writer = new BufferedWriter(new OutputStreamWriter(output, StandardCharsets.UTF_8));
+        var reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
+        writer.write("hello\n");
+        writer.flush();
+        for (;;) {
+            String s = reader.readLine();
+            if (s.equals("bye")) {
+                writer.write("bye\n");
+                writer.flush();
+                break;
+            }
+            writer.write("ok: " + s + "\n");
+            writer.flush();
+        }
+    }
+}
+```
+
+http:
+```java
+import java.net.URI;
+import java.net.http.*;
+import java.net.http.HttpClient.Version;
+import java.time.Duration;
+import java.util.*;
+
+public class Main {
+    // 全局HttpClient:
+    static HttpClient httpClient = HttpClient.newBuilder().build();
+
+    public static void main(String[] args) throws Exception {
+        String url = "https://www.sina.com.cn/";
+        HttpRequest request = HttpRequest.newBuilder(new URI(url))
+            // 设置Header:
+            .header("User-Agent", "Java HttpClient").header("Accept", "*/*")
+            // 设置超时:
+            .timeout(Duration.ofSeconds(5))
+            // 设置版本:
+            .version(Version.HTTP_2).build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        // HTTP允许重复的Header，因此一个Header可对应多个Value:
+        Map<String, List<String>> headers = response.headers().map();
+        for (String header : headers.keySet()) {
+            System.out.println(header + ": " + headers.get(header).get(0));
+        }
+        System.out.println(response.body().substring(0, 1024) + "...");
+    }
+}
+```
+
+jdbc：
+```java
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+
+public class JdbcDemo {
+
+    // 1. 定义数据库连接信息 (以 MySQL 为例)
+    // 注意：url 后面通常跟着时区、字符集等配置
+    private static final String URL = "jdbc:mysql://localhost:3306/my_database?useSSL=false&serverTimezone=UTC&characterEncoding=utf8";
+    private static final String USER = "root";
+    private static final String PASSWORD = "your_password";
+
+    public static void main(String[] args) {
+        System.out.println("--- 开始 JDBC 操作 ---");
+        
+        insertUser("张三", "zhangsan@example.com");
+        queryAllUsers();
+        
+        System.out.println("--- JDBC 操作结束 ---");
+    }
+
+    /**
+     * 演示：插入一条数据 (Insert)
+     */
+    public static void insertUser(String username, String email) {
+        String sql = "INSERT INTO users (username, email) VALUES (?, ?)";
+
+        // 使用 try-with-resources 语法，确保无论是否发生异常，资源都会被自动关闭
+        try (
+            // 步骤 1: 获取数据库连接
+            Connection conn = DriverManager.getConnection(URL, USER, PASSWORD);
+            // 步骤 2 & 3: 准备 SQL 并创建 PreparedStatement
+            PreparedStatement pstmt = conn.prepareStatement(sql)
+        ) {
+            // 替换 SQL 语句中的占位符 (?)
+            pstmt.setString(1, username); // 第 1 个问号填入 username
+            pstmt.setString(2, email);    // 第 2 个问号填入 email
+
+            // 步骤 4: 执行更新操作 (增、删、改都用 executeUpdate)
+            int affectedRows = pstmt.executeUpdate();
+            System.out.println("成功插入 " + affectedRows + " 条数据。");
+
+        } catch (SQLException e) {
+            System.err.println("数据库操作失败: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * 演示：查询所有数据 (Select)
+     */
+    public static void queryAllUsers() {
+        String sql = "SELECT id, username, email FROM users";
+
+        try (
+            Connection conn = DriverManager.getConnection(URL, USER, PASSWORD);
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            // 步骤 4: 执行查询操作 (查用 executeQuery，返回 ResultSet)
+            ResultSet rs = pstmt.executeQuery()
+        ) {
+            System.out.println("--- 用户列表 ---");
+            // 步骤 5: 遍历结果集
+            while (rs.next()) {
+                // 通过列名（或列的索引）获取数据
+                int id = rs.getInt("id");
+                String name = rs.getString("username");
+                String email = rs.getString("email");
+                
+                System.out.println(String.format("ID: %d, 姓名: %s, 邮箱: %s", id, name, email));
+            }
+        } catch (SQLException e) {
+            System.err.println("查询数据失败: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+}
 ```
