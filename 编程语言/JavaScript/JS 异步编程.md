@@ -1,6 +1,6 @@
 本文主要就是探讨 Promise 的更多用法。在平常我们接触 Promise，可能更多时候是去处理一个现成的 Promise， 比如某个 fetch、setTimeout 函数返回的东西，我用 `.then()`或者 `await` 处理结果，大部分人的认知仅限于此。
 
-
+![](assets/JS%20异步编程/file-20260723105434623.png)
 
 然而，Promise 能做的远不止这些，在 JavaScript 这门单线程语言中，要想实现复杂的代码执行流程的控制，Promise 以及微队列是绝佳的原生任务调度原语，通过 Promise 控制微队列，可以实现非常复杂的任务调度流程。想要对 JS 的异步编程有更深入的理解，就必须从“被动处理 Promise”转变为“主动使用 Promise”。
 
@@ -11,7 +11,7 @@
 在正式开始之前，我们先来复习一下一些 Promise 的基础知识，这些知识在后续的代码中都会有所体现。
 
 1. `Promise` 代表一个异步任务的结果，不管该异步任务是否有返回值，都会返回一个 Promise
-2. 通过 `Promise.resolve`，我们可以快速创建一个 `fulfilled`状态的 Promise
+2. 通过 `Promise.resolve`，我们可以快速创建一个 `fulfilled` 状态的 Promise
 3. 在 `Promise.then(() => {})`中，只有前面的 Promise 从 `pending`状态变为 `settled`状态（即 `fulfilled`或者 `rejected`）之后，`then`中的回调才会被作为一个微任务推入微队列
 4. 通过`(Promise.then()).then` 这样的形式，我们可以创建出一条 Promise 链，实现执行流程的前后顺序管理。
 5. 每一个 `then` 返回的 Promise 的状态取决于里面的回调函数是否被执行完，如果回调函数返回的也是一个 Promise 且保持 `pending`，那么外层的 `then`返回的 Promise 也会保持 `pending`
@@ -123,7 +123,7 @@ tq.add(() => sleep(3000).then(() => console.log("3s")))
 ```
 
 
-搞懂下面的 `Scheduler`类，基于 Promise 的异步编程能力就可以说是比较强了
+搞懂下面的 `Scheduler` 类，基于 Promise 的异步编程能力就可以说是比较强了
 
 ```typescript
 type Task = () => Promise<any>;
