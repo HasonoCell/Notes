@@ -228,7 +228,7 @@ JOIN app.users AS u ON u.id = p.user_id;
 
 ### 6.1 PG 为什么强调连接池
 
-PG 的服务端采用**多进程模型**。主进程（也常被称为 postmaster）负责监听端口、接受连接和拉起子进程；一个客户端数据库连接通常对应一个独立的 backend 进程。
+PG 的服务端采用 **多进程模型**。主进程（也常被称为 postmaster）负责监听端口、接受连接和拉起子进程；一个客户端数据库连接通常对应一个独立的 backend 进程。
 
 ```text
 应用请求
@@ -444,9 +444,151 @@ GROUP BY 1;
 REFRESH MATERIALIZED VIEW reporting.daily_sales;
 ```
 
-## 十一、迁移、备份恢复与可观测性
+## 十一、主从分离、流复制与高可用
 
-### 11.1 数据库迁移
+PG 语境中的“主从分离”不是单一功能，而是四个职责的组合：
+
+| 职责 | 解决的问题 | 常见承担者 |
+|---|---|---|
+| 物理流复制 | 将 Primary 的数据持续同步给 Replica | PostgreSQL + WAL |
+| 读写路由 | 写请求去主库、可延迟的读请求去从库 | 应用代码或数据库代理 |
+| 连接复用 | 控制真实 PG 连接数 | 应用连接池、PgBouncer |
+| 故障切换 | Primary 故障后选出新主库并切流量 | HA 管理器 + 负载均衡/DNS/VIP |
+
+因此，**PgBouncer 是连接池，不等于读写分离，也不负责主从自动切换**。物理复制也只解决数据同步；应用仍需决定一条查询去哪里执行。
+
+### 11.1 典型生产架构
+
+```text
+应用
+├── 写连接池 ──→ 主库入口 ──→ Primary
+└── 读连接池 ──→ 只读入口 ─┬→ Replica A
+                           └→ Replica B
+
+Primary ── WAL 流复制 ──→ Replicas
+Primary + Replicas ──→ 自动备份 / WAL 归档 / PITR
+HA 管理器 ──→ 健康检查、选主、故障切换
+```
+
+Primary 处理所有写入，事务提交后会生成可供复制的 WAL；Replica 持续接收并重放 WAL。启用 Hot Standby 的 Replica 能对外提供只读查询，因此也被称为只读副本（read replica）。
+
+应用通常维护两组连接配置：writer 指向主库入口，reader 指向只读入口。读入口可以由负载均衡器在多个健康副本间分发，也可以由应用自行选择副本。
+
+### 11.2 物理流复制：高可用和读副本的默认选择
+
+物理复制传输并重放 WAL，目标是让 Replica 的整个实例保持与 Primary 接近一致。它适合：
+
+- 一主多从的灾备和故障接管；
+- 将报表、搜索、列表等只读负载从主库卸下；
+- 几乎完整复制整个数据库实例。
+
+初始化 Replica 时，通常用 `pg_basebackup` 从 Primary 获得一致的基础备份，随后以 standby 身份持续接收 WAL。真实生产环境还需配置复制账户、网络访问规则、复制槽（replication slot）、WAL 保留和监控；不应只复制一次数据目录后就认为复制已可靠建立。
+
+```bash
+# -R 会在目标数据目录写入 standby 所需的连接配置。
+pg_basebackup -h primary.example.internal -U replicator \
+  -D /var/lib/postgresql/data -R -P
+```
+
+### 11.3 读写路由与“读己之写”
+
+流复制默认是异步的。因此可能出现：写入已经在 Primary 提交成功，但 WAL 尚未被 Replica 重放；此时立即从 Replica 查询，可能读不到刚写入的数据。
+
+```text
+请求 A：向 Primary 写入订单并成功提交
+请求 B：立刻向 Replica 查询该订单
+结果：Replica 尚未重放对应 WAL，查询不到或读到旧值
+```
+
+常见路由准则：
+
+- `INSERT`、`UPDATE`、`DELETE` 永远发往 Primary；
+- 显式事务中的所有读写通常都留在 Primary；
+- 注册后跳转、下单后展示、支付后查状态等“刚写完必须立即读到”的请求走 Primary；
+- 首页列表、历史数据、搜索、运营报表等可容忍复制延迟的读请求才走 Replica。
+
+不要把“所有 `SELECT` 都发从库”当作默认策略。业务层必须明确哪些读取可接受陈旧数据，以及允许多久的陈旧。
+
+### 11.4 异步复制与同步复制
+
+- **异步复制（默认）**：Primary 不等待 Replica 确认就完成提交，写入延迟低；主库突发故障时，最近一小段已确认事务可能还未来得及复制，因而存在数据丢失窗口。
+- **同步复制**：Primary 在提交时等待指定数量的同步副本确认 WAL，降低故障时的数据丢失风险；代价是写入延迟增加，并且同步副本不可用可能降低写可用性。
+
+同步复制不是“绝对不丢数据”的简单开关。确认到达的层级、跨可用区网络、是否同时存在存储层故障，以及切换流程都会影响最终保障。应先根据业务定义 RPO（最多能丢多久的数据）和 RTO（最多可中断多久服务），再选择策略。
+
+**概念配置：**
+
+```conf
+# Primary 的 postgresql.conf：要求至少一个名为 replica_a 的同步副本。
+synchronous_standby_names = 'FIRST 1 (replica_a)'
+```
+
+```sql
+-- 关键事务不要关闭 synchronous_commit；配置了同步副本后，on（默认值）
+-- 会使提交按同步复制策略等待副本确认。
+SET LOCAL synchronous_commit = on;
+```
+
+### 11.5 故障切换与脑裂
+
+Replica 不会因为 Primary 失联就安全地“自己成为主库”。完整的切换流程是：
+
+```text
+检测 Primary 异常
+→ 确认旧 Primary 已被隔离、不能继续接受写入（fencing）
+→ 提升一个健康 Replica 为新的 Primary
+→ 将写入口切换至新 Primary
+→ 修复旧 Primary，并将其重新加入为 Replica
+```
+
+最危险的问题是 **脑裂（split brain）**：网络分区后旧 Primary 仍可写，同时另一个 Replica 又被提升为新 Primary，两个节点各自产生不同 WAL。普通物理复制无法自动合并两边的写入，因此必须通过可靠的选主、仲裁和 fencing 避免双主写入。
+
+自建场景常使用 Patroni、repmgr 等 HA 管理器，搭配负载均衡器、VIP 或 DNS 维护稳定的主库入口。托管数据库将这些流程封装为自动故障转移能力，但仍需理解其 RPO、RTO、切换触发条件和应用重连策略。
+
+### 11.6 复制监控
+
+生产中至少监控副本是否在线、传输/回放延迟、复制槽造成的 WAL 堆积、主从磁盘空间和故障切换事件。主库可查看已连接副本状态：
+
+```sql
+SELECT
+  application_name,
+  state,
+  sync_state,
+  write_lag,
+  flush_lag,
+  replay_lag
+FROM pg_stat_replication;
+```
+
+在 Replica 上，可确认本机是否处于恢复模式，并查看最近一次 WAL 回放时间：
+
+```sql
+SELECT
+  pg_is_in_recovery() AS is_replica,
+  pg_last_xact_replay_timestamp() AS last_replay_at;
+```
+
+监控值为空、延迟短暂波动，并不一定说明故障；要结合写入量、网络状态和副本是否正在回放来判断。更关键的是为“副本已不可用”与“延迟超过业务阈值”分别配置告警和降级策略。
+
+### 11.7 逻辑复制的边界
+
+逻辑复制使用“发布（publication）—订阅（subscription）”模型，复制的是指定表的行级变更，而不是整个实例的数据页。它适合向数据仓库、搜索系统或下游服务分发数据，也适合选择性同步和跨大版本迁移。
+
+```sql
+-- 发布端：只发布需要同步的业务表。
+CREATE PUBLICATION app_data FOR TABLE app.users, app.orders;
+
+-- 订阅端：连接到发布端并接收变更。
+CREATE SUBSCRIPTION app_data_sub
+CONNECTION 'host=primary.example.internal dbname=my_app user=replicator password=...'
+PUBLICATION app_data;
+```
+
+逻辑复制并非常规 HA 读副本的首选：它需要单独管理 Schema 变更、表的复制标识和潜在写冲突。将订阅库用于只读下游时最简单；若两端都允许业务写入，则必须自行设计冲突处理，不能把它误解为通用的多主方案。
+
+## 十二、迁移、备份恢复与可观测性
+
+### 12.1 数据库迁移
 
 Schema 变化应像应用代码一样纳入版本控制，并以顺序迁移文件或迁移工具执行。已进入生产的迁移不应被直接修改。
 
@@ -465,7 +607,7 @@ CREATE INDEX CONCURRENTLY idx_orders_created_at
 ON app.orders (created_at);
 ```
 
-### 11.2 备份与恢复
+### 12.2 备份与恢复
 
 - **逻辑备份**：`pg_dump` 导出 schema 和数据，便于选择性恢复、跨环境迁移和逻辑检查。
 - **集群级对象**：Role 等全局对象需单独纳入备份方案。
@@ -482,7 +624,7 @@ pg_restore --list my_app.dump
 pg_restore --no-owner -d my_app_restore my_app.dump
 ```
 
-### 11.3 运行监控
+### 12.3 运行监控
 
 应持续关注：连接数、活跃会话、`idle in transaction`、慢查询、锁等待、死锁、缓存命中、WAL 量、复制延迟、磁盘空间、表/索引膨胀和 Autovacuum 活动。
 
@@ -502,7 +644,7 @@ WHERE datname = current_database()
 ORDER BY query_start;
 ```
 
-## 十二、从 MySQL 迁移时的高频差异
+## 十三、从 MySQL 迁移时的高频差异
 
 | 主题 | MySQL 常见习惯 | PG 的推荐理解 |
 |---|---|---|
@@ -516,7 +658,7 @@ ORDER BY query_start;
 | 连接模型 | 通常采用线程/连接模型理解 | PG 一连接通常对应一个 backend 进程，更应重视连接池 |
 | DDL | 部分操作事务性受限 | 大多数 DDL 可事务化，但并发建索引等是例外 |
 
-## 十三、实践中的设计准则
+## 十四、实践中的设计准则
 
 1. 先用普通表、规范化关系、B-tree 索引和短事务解决问题；不要过早引入分区、JSONB、触发器或复杂扩展。
 2. 用数据库约束保证关键数据不变量；应用校验提升体验，但不能替代数据库约束。
@@ -526,7 +668,7 @@ ORDER BY query_start;
 6. 保持事务短小，配置连接池与超时，严防 `idle in transaction`。
 7. 迁移、备份、恢复、监控和权限属于数据库系统的一部分，而不是上线后的附加项。
 
-## 十四、后续学习路线
+## 十五、后续学习路线
 
 在掌握本笔记内容后，可按需求继续深入：
 
