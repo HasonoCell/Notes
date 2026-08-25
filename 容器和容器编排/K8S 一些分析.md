@@ -76,7 +76,7 @@ Worker Node 负责真正运行容器化的应用。
 
 ## Pod
 
-Pod 本质上就是共享 name space 的容器组，比如我们按照下面这个配置文件 `kubectl apply -f demo-pod.yaml` 启动一个 pod，可以通过 `kubectl get pods -w` 查看多个 pod 状态：
+Pod 本质上就是共享 namespace 的容器组，比如我们按照下面这个配置文件 `kubectl apply -f demo-pod.yaml` 启动一个 pod，可以通过 `kubectl get pods -w` 查看多个 pod 状态：
 
 ```yaml
 apiVersion: v1
@@ -100,7 +100,7 @@ spec:
 
 # Informer
 
-Informer 可以说是 k8s 中一个非常重要的 package 了，和 api-server，contoller- manager，scheduler 这些组件不同，informer 不作为一个独立的组件存在，也就是说不会单独运行一个所谓的 informer 进程，它本质上是 client-go 这个包中的子包，所以要想搞清楚 informer，还得先弄清楚 client-go。
+Informer 可以说是 k8s 中一个非常重要的 package 了，和 api-server，contoller-manager，scheduler 这些组件不同，informer 不作为一个独立的组件存在，也就是说不会单独运行一个所谓的 informer 进程，它本质上是 client-go 这个包中的子包，所以要想搞清楚 informer，还得先弄清楚 client-go。
 
 我们知道一个 k8s 集群中，只有 api-server 才能访问存储整个集群状态的 etcd，client-go 就是 k8s 官方提供的一套专门用来与 api-server 通信的 sdk。而 client-go 中，client-go/kubernete/clientset.go 就封装了与 api-server 通信的各种方法，比如你可以这么使用：
 ```go
@@ -122,7 +122,7 @@ controller 一被启动，`reflector` 会向 api-server 发送一个 `GET /api/v
 ## DeltaFIFO
 
 如果有人通过 kubectl 创建了一个新的 pod。api-server 顺着刚才 Watch 阶段的长连接，把这段 JSON 推给了此 pod 所属 controller 的 `reflector`。`reflector` 收到 JSON 后，把它包装成一个增量对象（例如：`事件类型: Added, 数据: Pod 1001`），然后立刻把它塞进 `DeltaFIFO`（增量先进先出队列）里。
-    
+
 之所以有这么个增量队列，是因为 `reflector` 必须马上回去继续处理属于此 controller 的网络请求，不能被后面的处理卡住，所以扔进队列是最好的解耦，这也是 `DeltaFIFO` 对于 `reflector` 的重要性。
 
 ## Indexer 与 EventHandler
@@ -151,11 +151,11 @@ informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 
 ---
 
-这篇文章讲的很不错：[Title Unavailable \| Site Unreachable](https://github.com/rfyiamcool/notes/blob/main/kubernetes_client_go_informer.md)
+这篇文章讲的很不错：(https://github.com/rfyiamcool/notes/blob/main/kubernetes_client_go_informer.md)
 
 # 一个 Pod 是如何被创建的
 
-问了一下 Gemini，答得比较满意～
+问了一下 Gemini，答得比较满意～自己也适当做了内容的增删润色。
 
 ---
 
