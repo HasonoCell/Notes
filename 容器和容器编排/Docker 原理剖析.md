@@ -511,3 +511,82 @@ namespace 对于容器一个至关重要的 ns 就是 netns。为容器进程创
 * **Tar 包的集合**：镜像的每一层在物理存储上就是一个个打包并压缩好的 `.tar.gz` 文件（在镜像仓库中被称为 Blob）。
 * **清单与配置（Manifest & Config）**：除了 Tar 包，镜像还包含一个或多个 JSON 格式的配置文件。这些 JSON 文件记录了镜像的层级顺序、每层的哈希值（SHA256）、环境变量、启动命令（ENTRYPOINT）等元数据。
 * 企业中也通常使用 Harbor 这样的应用来发布和管理自己的镜像。
+
+```bash
+docker build -t registry.example/payment-service:latest .
+```
+
+含义：根据当前目录的 `Dockerfile` 构建镜像，并在本地标记为：
+
+```text
+registry.example/payment-service:latest
+```
+
+名称组成：
+
+```text
+registry.example / payment-service : latest
+镜像仓库地址      仓库名             tag
+```
+
+其中 `.` 表示把当前目录作为构建上下文。Docker 会读取其中的文件（但会排除 `.dockerignore` 指定的内容），执行 `Dockerfile` 的 `FROM`、`COPY`、`RUN` 等步骤，最终在本地生成镜像。
+
+构建成功后可查看：
+
+```bash
+docker image ls
+```
+
+> 注意：应正确配置 `.dockerignore`，避免把 `node_modules`、密钥、构建产物等传入构建上下文或打进镜像。
+
+```bash
+docker push registry.example/payment-service:latest
+```
+
+含义：将本地同名镜像上传到远端镜像仓库。
+
+推送过程大致为：
+
+```text
+登录并鉴权
+→ 检查远端是否已有相同镜像层
+→ 只上传缺失的层
+→ 上传镜像 Manifest
+→ 将 latest 标签指向新的 Manifest
+→ 输出该 Manifest 的 sha256 digest
+```
+
+`latest` 是可变 tag：
+
+```text
+上午：payment-service:latest → sha256:111...
+下午：payment-service:latest → sha256:222...
+```
+
+因此不能用 `latest` 精确描述一次发布实际部署的内容。
+
+发布时应使用不可变 digest：
+
+```text
+registry.example/payment-service@sha256:8f4c...
+```
+
+也可同时保留易读版本标签：
+
+```text
+registry.example/payment-service:1.2.3@sha256:8f4c...
+```
+
+真正决定镜像内容的是 `@sha256:...`。
+
+更常见的现代写法：
+
+```bash
+docker buildx build \
+  --platform linux/amd64 \
+  -t registry.example/payment-service:1.2.3 \
+  --push \
+  .
+```
+
+它会构建并直接推送镜像；终端输出的 digest 就是 OrbitOps 创建 Release 时应使用的镜像引用。
