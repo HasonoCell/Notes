@@ -100,6 +100,50 @@ spec:
 
 # Informer
 
+client-go 中的关键概念：`Get/List`、`Watch` 和 `Informer`。
+
+它们都是“获知 Kubernetes 对象状态”的方式，只是实时性和复杂度不同。
+
+```mermaid
+flowchart LR
+    API[Kubernetes API Server] -->|Get / List| S[一次性快照]
+    API -->|Watch| E[持续事件流<br/>Added / Modified / Deleted]
+    API -->|List + Watch| I[Informer<br/>本地缓存 + 事件回调]
+```
+
+最基础的是：
+
+```
+Get  → 读取一个命名对象当前的状态
+List → 读取一批对象当前的状态
+```
+
+它们都只回答“此刻是什么状态”。
+
+`Watch` 则是：
+
+> 我先订阅某类对象，后续对象新增、修改、删除时，API Server 持续推送事件给我。
+
+例如 Deployment 的 `status.availableReplicas` 从 0 变为 1，Watch 会发出一次 `Modified` 事件。
+
+`Informer` 更进一步，通常会：
+
+```
+先 List 得到初始全量对象
+→ 建立 Watch 接收增量事件
+→ 在本地维护缓存
+→ 给控制器触发事件回调
+```
+
+Kubernetes 自己的大量 Controller 都依赖 Informer。Deployment Controller、ReplicaSet Controller 之类的逻辑可以概括为：
+
+```
+Informer 发现 Deployment 或 Pod 变化
+→ 将相关对象放进工作队列
+→ reconcile：比较期望 spec 与实际 status
+→ 需要时调用 API 修改对象
+```
+
 Informer 可以说是 k8s 中一个非常重要的 package 了，和 api-server，contoller-manager，scheduler 这些组件不同，informer 不作为一个独立的组件存在，也就是说不会单独运行一个所谓的 informer 进程，它本质上是 client-go 这个包中的子包，所以要想搞清楚 informer，还得先弄清楚 client-go。
 
 我们知道一个 k8s 集群中，只有 api-server 才能访问存储整个集群状态的 etcd，client-go 就是 k8s 官方提供的一套专门用来与 api-server 通信的 sdk。而 client-go 中，client-go/kubernete/clientset.go 就封装了与 api-server 通信的各种方法，比如你可以这么使用：
