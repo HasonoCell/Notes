@@ -315,12 +315,3 @@ SandboxClaim/session-1
 如果池中没有可用的预热候选项，Claim 控制器可以使用该池引用的 Template 冷启动
 一个新 Sandbox。如果 Claim 指定了额外的环境变量或 PVC 模板，也必须冷启动，
 因为这些配置需要在 Pod 创建前写入。
-
-## 源码索引
-
-- 核心 API：[`api/v1beta1/sandbox_types.go`](https://github.com/kubernetes-sigs/agent-sandbox/blob/main/api/v1beta1/sandbox_types.go)
-- Sandbox 调谐循环：[`controllers/sandbox_controller.go`](https://github.com/kubernetes-sigs/agent-sandbox/blob/main/controllers/sandbox_controller.go)
-- Extensions API：[`extensions/api/v1beta1/`](https://github.com/kubernetes-sigs/agent-sandbox/tree/main/extensions/api/v1beta1)
-- Template 控制器：[`extensions/controllers/sandboxtemplate_controller.go`](https://github.com/kubernetes-sigs/agent-sandbox/blob/main/extensions/controllers/sandboxtemplate_controller.go)
-- WarmPool 控制器：[`extensions/controllers/sandboxwarmpool_controller.go`](https://github.com/kubernetes-sigs/agent-sandbox/blob/main/extensions/controllers/sandboxwarmpool_controller.go)
-- Claim 控制器与所有权转移：[`extensions/controllers/sandboxclaim_controller.go`](https://github.com/kubernetes-sigs/agent-sandbox/blob/main/extensions/controllers/sandboxclaim_controller.go)
