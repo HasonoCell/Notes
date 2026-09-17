@@ -24,8 +24,7 @@ HTTP 或 gRPC 客户端
 ```
 
 控制面回答“Sandbox 是否已经创建并 Ready”，数据面回答“请求如何到达已经运行的
-Sandbox”。Sandbox CRD 只是 Kubernetes API 中的资源记录，不能接收命令请求；
-真正执行操作的是 Pod 里的 Runtime。
+Sandbox”。Sandbox CRD 只是 Kubernetes API 中的资源记录，不能接收命令请求；真正执行操作的是 Pod 里的 Runtime。
 
 ## SDK 如何创建 Sandbox
 
@@ -69,8 +68,7 @@ SandboxClaim 控制器处理 Claim
                   SDK 返回 Sandbox 句柄
 ```
 
-SDK 会从 Claim 和 Sandbox Status 中取得 Sandbox 名称、Pod 名称、Pod IP 和 Ready
-状态。Go SDK 会先等待 Claim 绑定，再单独观察 Sandbox Ready；Python SDK 当前可以
+SDK 会从 Claim 和 Sandbox Status 中取得 Sandbox 名称、Pod 名称、Pod IP 和 Ready 状态。Go SDK 会先等待 Claim 绑定，再单独观察 Sandbox Ready；Python SDK 当前可以
 从 Claim 转发的状态中同时取得绑定与 Ready 结果。
 
 ### 三种名称的对应关系
@@ -177,8 +175,7 @@ Service/sandbox-router-svc:8080
 Router Pod
 ```
 
-SDK 读取 Gateway 的 `status.addresses` 获得外部地址。GKE 只是 Gateway API 的一种
-实现，其他 Kubernetes 环境也可以使用自己的 Gateway Controller。
+SDK 读取 Gateway 的 `status.addresses` 获得外部地址。GKE 只是 Gateway API 的一种实现，其他 Kubernetes 环境也可以使用自己的 Gateway Controller。
 
 ### Port-forward 模式
 
@@ -190,8 +187,7 @@ SDK 读取 Gateway 的 `status.addresses` 获得外部地址。GKE 只是 Gatewa
 Router Pod:8080
 ```
 
-SDK 最终访问类似 `http://127.0.0.1:54321` 的地址。Go SDK 使用 client-go 原生
-SPDY port-forward；Python SDK 当前调用 `kubectl port-forward`。
+SDK 最终访问类似 `http://127.0.0.1:54321` 的地址。Go SDK 使用 client-go 原生 SPDY port-forward；Python SDK 当前调用 `kubectl port-forward`。
 
 ### Direct URL 模式
 
@@ -201,8 +197,7 @@ SPDY port-forward；Python SDK 当前调用 `kubectl port-forward`。
 http://sandbox-router-svc.agent-sandbox-system.svc.cluster.local:8080
 ```
 
-Direct URL 只跳过 Router 地址发现。SDK 仍然需要 Kubernetes 客户端管理 Claim
-生命周期。
+Direct URL 只跳过 Router 地址发现。SDK 仍然需要 Kubernetes 客户端管理 Claim 生命周期。
 
 ## Router 如何定位目标 Pod
 
@@ -319,8 +314,7 @@ sandboxd
 └── gRPC :9090  ── 进程执行
 ```
 
-当前 Router 不能承载 sandboxd 的 gRPC ProcessService，因此 SDK 直接对 Sandbox
-Pod 建立 port-forward：
+当前 Router 不能承载 sandboxd 的 gRPC ProcessService，因此 SDK 直接对 Sandbox Pod 建立 port-forward：
 
 ```text
 SDK

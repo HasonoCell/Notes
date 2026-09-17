@@ -88,23 +88,19 @@ spec:
 2. **创建 Pod**
 
    控制器复制 `spec.podTemplate.spec`，加入控制器使用的追踪标签，把 PVC 模板
-   转换为 Pod Volume，将 Pod 名称设为 Sandbox 名称，并让 Sandbox 成为 Pod 的
-   控制器所有者。
+   转换为 Pod Volume，将 Pod 名称设为 Sandbox 名称，并让 Sandbox 成为 Pod 的控制器所有者。
 
 3. **创建 Service**
 
    当 `spec.service` 为 `true` 时，控制器会创建一个无头 Service
-  （`clusterIP: None`）。Service 通过控制器生成的 Sandbox 名称哈希标签选择对应
-   Pod，端口来自各容器声明的端口。
+  （`clusterIP: None`）。Service 通过控制器生成的 Sandbox 名称哈希标签选择对应 Pod，端口来自各容器声明的端口。
 
 4. **计算 Condition 并更新 Status**
 
-   控制器把 Pod IP、所在节点、Service 名称与 FQDN、调度状态和 Ready 状态写入
-   Sandbox Status。
+   控制器把 Pod IP、所在节点、Service 名称与 FQDN、调度状态和 Ready 状态写入 Sandbox Status。
 
 第一次 Reconcile 通常会把 `Ready` 设为 `False`，reason 为
-`DependenciesNotReady`。随后，调度器和 kubelet 会分配节点、拉取镜像、启动容器，
-并更新 Pod 状态。这些变化通过 Watch 再次触发 Sandbox Reconcile。
+`DependenciesNotReady`。随后，调度器和 kubelet 会分配节点、拉取镜像、启动容器，并更新 Pod 状态。这些变化通过 Watch 再次触发 Sandbox Reconcile。
 
 只有满足以下所有条件，Sandbox 才会进入 `Ready=True`，reason 为
 `DependenciesReady`：
@@ -135,15 +131,12 @@ Sandbox/demo
 └── 拥有 Service/demo
 ```
 
-删除 Sandbox 后，Kubernetes 垃圾回收机制可以根据这些 owner reference 清理其
-子资源。控制器在修改同名资源前也会检查所有权，避免误接管由其他控制器拥有的
+删除 Sandbox 后，Kubernetes 垃圾回收机制可以根据这些 owner reference 清理其子资源。控制器在修改同名资源前也会检查所有权，避免误接管由其他控制器拥有的
 对象。
 
 ## SandboxWarmPool 如何启动
 
-Extensions 构建在核心 Sandbox 控制器之上。WarmPool 不直接创建 Pod，而是先创建
-指定数量的 `Sandbox` Custom Resource，再由核心 Sandbox 控制器为每个 Sandbox
-创建实际的 Kubernetes 工作负载。
+Extensions 构建在核心 Sandbox 控制器之上。WarmPool 不直接创建 Pod，而是先创建指定数量的 `Sandbox` Custom Resource，再由核心 Sandbox 控制器为每个 Sandbox 创建实际的 Kubernetes 工作负载。
 
 ### 四种资源各自负责什么
 
@@ -179,8 +172,7 @@ spec:
     name: python-template
 ```
 
-Template 和 WarmPool 必须位于同一个 namespace，因为 `sandboxTemplateRef` 只有
-名称，没有 namespace 字段。
+Template 和 WarmPool 必须位于同一个 namespace，因为 `sandboxTemplateRef` 只有名称，没有 namespace 字段。
 
 ### WarmPool 扩容流程
 
@@ -212,9 +204,7 @@ SandboxWarmPool/python-pool 声明需要 3 个副本
 7. 统计 Ready Sandbox，写入 status.readyReplicas
 ```
 
-池创建的 Sandbox 使用类似 `python-pool-abc12` 的生成名称，并带有 pool、template、
-blueprint hash 和 `launch-type=warm` 等标签。WarmPool 是这些 Sandbox 的
-控制器所有者。
+池创建的 Sandbox 使用类似 `python-pool-abc12` 的生成名称，并带有 pool、template、blueprint hash 和 `launch-type=warm` 等标签。WarmPool 是这些 Sandbox 的控制器所有者。
 
 在创建 Sandbox 前，WarmPool 控制器还会应用 Extensions 的安全默认值。例如，
 如果 Template 没有明确设置 `automountServiceAccountToken`，默认值会是 `false`。
@@ -241,8 +231,7 @@ status.replicas 与 status.readyReplicas 逐渐收敛
 ```
 
 `status.replicas` 统计当前属于池的活跃 Sandbox，`status.readyReplicas` 只统计
-`Ready=True` 的 Sandbox。因此，配置 `replicas: 3` 时，池可能暂时显示 3 个副本，
-但 Ready 副本只有 1 个，因为另外两个 Pod 还在启动。
+`Ready=True` 的 Sandbox。因此，配置 `replicas: 3` 时，池可能暂时显示 3 个副本，但 Ready 副本只有 1 个，因为另外两个 Pod 还在启动。
 
 ### 第二棵所有权树：WarmPool 创建 Sandbox
 
@@ -295,8 +284,7 @@ Template。
 
 ## Claim 领取与 WarmPool 补位
 
-当 `SandboxClaim` 引用一个 WarmPool 时，Claim 控制器会选择一个可用 Sandbox，
-并转移它的控制器所有者：
+当 `SandboxClaim` 引用一个 WarmPool 时，Claim 控制器会选择一个可用 Sandbox，并转移它的控制器所有者：
 
 ```text
 领取前：
@@ -308,9 +296,7 @@ SandboxClaim/session-1
 └── 拥有 Sandbox/python-pool-abc12（仍然使用原来的运行中 Pod）
 ```
 
-这个过程不会重启 Pod，这正是 warm start 能降低启动延迟的原因。Claim 控制器会
-移除 pool membership 标签，并加入 Claim 身份信息。WarmPool 随后观察到成员数
-低于期望值，于是创建一个新的 Sandbox 补位。
+这个过程不会重启 Pod，这正是 warm start 能降低启动延迟的原因。Claim 控制器会移除 pool membership 标签，并加入 Claim 身份信息。WarmPool 随后观察到成员数低于期望值，于是创建一个新的 Sandbox 补位。
 
 如果池中没有可用的预热候选项，Claim 控制器可以使用该池引用的 Template 冷启动
 一个新 Sandbox。如果 Claim 指定了额外的环境变量或 PVC 模板，也必须冷启动，
