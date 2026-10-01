@@ -564,3 +564,9 @@ Claim / Sandbox Ready
           ▼
 Connector 复用同一套文件和命令 API
 ```
+
+---
+
+# Sandbox-Router
+
+![](assets/SDK%20连接%20Runtime%20的三种方式/file-20260925221755124.png)
