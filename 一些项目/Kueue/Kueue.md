@@ -24,6 +24,29 @@ kube-scheduler（或专用调度器）：把 Pod 放到节点
 节点执行计算任务
 ```
 
+
+更详细的运行架构：
+```text
+Job / RayJob / JobSet / Pod ...
+          │
+          ▼
+① 任务集成层：拦住任务，生成 Workload
+          │
+          ▼
+② 队列与资源模型：LocalQueue → ClusterQueue → Flavor / Cohort
+          │
+          ▼
+③ 准入引擎：排队、计算配额、选择 Flavor、决定是否放行
+          │
+          ▼
+④ 生命周期层：记录准入结果，恢复或停止原任务
+          │
+          ▼
+Kubernetes 自己创建 Pod，并把 Pod 调度到节点
+
+TAS、AdmissionCheck、MultiKueue 等能力接入上述不同环节
+```
+
 ---
 ![](assets/Kueue/file-20260920144523456.png)
 ![](assets/Kueue/file-20260920144811501.png)
