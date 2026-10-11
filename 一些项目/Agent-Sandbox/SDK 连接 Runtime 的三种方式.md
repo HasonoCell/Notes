@@ -50,8 +50,7 @@ sandbox.files.read("result.txt")
 ```
 
 `create_sandbox()` 主要使用控制面；`commands.run()` 和 `files.read()` 才会使用
-数据面。三种连接方式只改变数据面路径，SandboxClaim 和 Sandbox 的生命周期管理
-仍然需要 Kubernetes API。
+数据面。三种连接方式只改变数据面路径，SandboxClaim 和 Sandbox 的生命周期管理仍然需要 Kubernetes API。
 
 ## Runtime 的两个接口
 
@@ -220,9 +219,7 @@ Go SDK 会监控 port-forward 的后台 goroutine。如果隧道意外退出，C
 关闭 HTTP client
 ```
 
-Python SDK 当前的 `SandboxdPodTunnelConnectionConfig` 也是这个思路，不过 Python
-实现使用 `kubectl port-forward` 子进程，并把 REST 和 gRPC 端口分别转发到两个本地
-端口。
+Python SDK 当前的 `SandboxdPodTunnelConnectionConfig` 也是这个思路，不过 Python实现使用 `kubectl port-forward` 子进程，并把 REST 和 gRPC 端口分别转发到两个本地端口。
 
 ## 第二种：Service DNS
 
@@ -266,8 +263,7 @@ REST：http://agent-1.default.svc.cluster.local:8080
 gRPC：agent-1.default.svc.cluster.local:9090
 ```
 
-SDK 不需要创建 Service，也不需要启动代理进程。Service 是 Sandbox controller
-根据 `spec.service: true` 创建的。
+SDK 不需要创建 Service，也不需要启动代理进程。Service 是 Sandbox controller 根据 `spec.service: true` 创建的。
 
 ### 实际请求路径
 
@@ -417,9 +413,7 @@ ConnectionStrategy
   └── gRPC     → grpcTarget:9090
 ```
 
-gRPC channel 通常是延迟创建的。只有第一次需要执行 sandboxd 命令时，Connector
-才根据 `grpcTarget` 创建 gRPC client。若 port-forward 重连并产生了新的本地端口，
-旧 channel 会被关闭，下一次请求会连接新的 target。
+gRPC channel 通常是延迟创建的。只有第一次需要执行 sandboxd 命令时，Connector 才根据 `grpcTarget` 创建 gRPC client。若 port-forward 重连并产生了新的本地端口，旧 channel 会被关闭，下一次请求会连接新的 target。
 
 ## 旧 Runtime 和 sandboxd 的差异
 
@@ -439,13 +433,10 @@ Service DNS        → REST 8080 + gRPC 9090
 Pod IP             → REST 8080 + gRPC 9090
 ```
 
-旧 Runtime 经过 sandbox-router 时，SDK 需要提供 Router 用来定位 Sandbox 的请求
-头，例如 `X-Sandbox-ID` 和 `X-Sandbox-Namespace`。集群内直连时不经过 Router，
-这些 Router 专用请求头不会被注入。
+旧 Runtime 经过 sandbox-router 时，SDK 需要提供 Router 用来定位 Sandbox 的请求头，例如 `X-Sandbox-ID` 和 `X-Sandbox-Namespace`。集群内直连时不经过 Router，这些 Router 专用请求头不会被注入。
 
 对于 sandboxd，Router 不是命令执行和文件操作的必经路径。Go SDK 可以直接连
-sandboxd 的两个端口；Python SDK 目前主要提供 `SandboxdPodTunnelConnectionConfig`，
-而在集群内通过 Service DNS 或 Pod IP 直接连接 sandboxd，正是
+sandboxd 的两个端口；Python SDK 目前主要提供 `SandboxdPodTunnelConnectionConfig`，而在集群内通过 Service DNS 或 Pod IP 直接连接 sandboxd，正是
 [#1686](https://github.com/kubernetes-sigs/agent-sandbox/issues/1686) 希望补齐的能力。
 
 ## Gateway 和 Direct URL 放在哪里

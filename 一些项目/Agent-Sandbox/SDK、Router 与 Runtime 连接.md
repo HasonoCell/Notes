@@ -68,8 +68,7 @@ SandboxClaim 控制器处理 Claim
                   SDK 返回 Sandbox 句柄
 ```
 
-SDK 会从 Claim 和 Sandbox Status 中取得 Sandbox 名称、Pod 名称、Pod IP 和 Ready 状态。Go SDK 会先等待 Claim 绑定，再单独观察 Sandbox Ready；Python SDK 当前可以
-从 Claim 转发的状态中同时取得绑定与 Ready 结果。
+SDK 会从 Claim 和 Sandbox Status 中取得 Sandbox 名称、Pod 名称、Pod IP 和 Ready 状态。Go SDK 会先等待 Claim 绑定，再单独观察 Sandbox Ready；Python SDK 当前可以从 Claim 转发的状态中同时取得绑定与 Ready 结果。
 
 ### 三种名称的对应关系
 
@@ -85,8 +84,7 @@ Sandbox/python-pool-x7k9p
 Pod/python-pool-x7k9p
 ```
 
-后续发给 Router 的 `X-Sandbox-ID` 是实际 Sandbox 名称
-`python-pool-x7k9p`，不是 Claim 名称。
+后续发给 Router 的 `X-Sandbox-ID` 是实际 Sandbox 名称 `python-pool-x7k9p`，不是 Claim 名称。
 
 ## SDK 如何执行命令
 
@@ -139,11 +137,11 @@ Runtime 的响应返回给 SDK。
 
 Gateway、Port-forward 和 Direct URL 只决定 SDK 从哪里进入同一个 Router：
 
-| 模式 | 典型场景 | SDK 到 Router 的路径 |
-| --- | --- | --- |
-| Gateway | 正式的集群外访问 | 公网负载均衡器 → Gateway → HTTPRoute → `sandbox-router-svc` |
-| Port-forward | 本地开发和 CI | 本地端口 → kube-apiserver 隧道 → Router Pod |
-| Direct URL | 已知 Router 地址 | SDK 直接使用给定 URL |
+| 模式           | 典型场景         | SDK 到 Router 的路径                                     |
+| ------------ | ------------ | ---------------------------------------------------- |
+| Gateway      | 正式的集群外访问     | 公网负载均衡器 → Gateway → HTTPRoute → `sandbox-router-svc` |
+| Port-forward | 本地开发和 CI     | 本地端口 → kube-apiserver 隧道 → Router Pod                |
+| Direct URL   | 已知 Router 地址 | SDK 直接使用给定 URL                                       |
 
 三种模式可以合并成：
 
